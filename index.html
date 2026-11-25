@@ -54,6 +54,7 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .tile.big video{height:42vh}
 .tile input{position:absolute;right:8px;bottom:6px;width:48%}
 @media (min-width:900px){.tile video{height:26vh}.tile.big video{height:50vh}}
+.prow{display:flex;gap:8px}.prow input{flex:3;min-width:0}.prow select{flex:2;min-width:0}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chalk);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;z-index:9}
 </style>
 </head>
@@ -64,7 +65,7 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 const db = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let names = ['', ''], start = 501, legsW = 3, setsW = 1, match = null, channel = null, mult = 1;
+let names = ['', ''], outs = ['double', 'double'], watch = false, shareOpen = false, start = 501, legsW = 3, setsW = 1, match = null, channel = null, mult = 1;
 
 // ---------- Checkout-Weg (Double-Out) ----------
 const D = [];
@@ -72,19 +73,22 @@ for (let i = 1; i <= 20; i++) D.push({l:'S'+i,v:i,d:0},{l:'D'+i,v:2*i,d:1},{l:'T
 D.push({l:'25',v:25,d:0},{l:'Bull',v:50,d:1});
 D.sort((a,b) => b.v - a.v);
 const FIN = D.filter(x => x.d);
-function route(r, max = 3) {
-  if (r > 170 || r < 2) return null;
-  for (const f of FIN) if (f.v === r) return [f.l];
-  if (max >= 2) for (const a of D) for (const f of FIN) if (a.v + f.v === r) return [a.l, f.l];
-  if (max >= 3) for (const a of D) for (const b of D) for (const f of FIN) if (a.v + b.v + f.v === r) return [a.l, b.l, f.l];
+function route(r, max = 3, rule = 'double') {
+  const single = rule === 'single';
+  if (r > (single ? 180 : 170) || r < (single ? 1 : 2)) return null;
+  const F = single ? D : rule === 'master' ? D.filter(x => x.d || x.l[0] === 'T') : FIN;
+  for (const f of F) if (f.v === r) return [f.l];
+  if (max >= 2) for (const a of D) for (const f of F) if (a.v + f.v === r) return [a.l, f.l];
+  if (max >= 3) for (const a of D) for (const b of D) for (const f of F) if (a.v + b.v + f.v === r) return [a.l, b.l, f.l];
   return null;
 }
+const RL = { single: 'Single Out', double: 'Double Out', master: 'Master Out' };
 const lbl = ([m, x]) => !m ? '0' : (m === 2 && x === 25 ? 'Bull' : (m === 1 ? '' : m === 2 ? 'D' : 'T') + x);
 
 // ---------- Spiellogik: Zustand wird aus der Wurfliste berechnet ----------
 function calc(cfg, ev) {
   const n = cfg.players.length;
-  const P = cfg.players.map(name => ({ name, rem: cfg.start, legs: 0, sets: 0, v: [] }));
+  const P = cfg.players.map((name, i) => ({ name, rule: (cfg.outs || [])[i] || 'double', rem: cfg.start, legs: 0, sets: 0, v: [] }));
   let leg = 0, starter = 0, turn = 0, cur = null, winner = null;
   for (const [m, x] of ev) {
     if (winner !== null) break;
@@ -92,7 +96,8 @@ function calc(cfg, ev) {
     if (!cur) cur = { before: p.rem, d: [], sum: 0, leg };
     cur.d.push([m, x]); cur.sum += m * x;
     const after = cur.before - cur.sum;
-    if (after < 0 || after === 1 || (after === 0 && m !== 2)) {
+    const okFin = p.rule === 'single' || (p.rule === 'master' ? m >= 2 : m === 2);
+    if (after < 0 || (after === 1 && p.rule !== 'single') || (after === 0 && !okFin)) {
       cur.bust = true; cur.sum = 0; p.rem = cur.before; p.v.push(cur); cur = null; turn = (turn + 1) % n;
     } else if (after === 0) {
       cur.win = true; p.v.push(cur); cur = null; p.legs++;
@@ -111,7 +116,7 @@ function home() {
   const opt = (arr, cur, f) => arr.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${f(n)}</option>`).join('');
   return `<div class="wrap"><h1>Dart-Abend</h1><p class="mute">Spielstand live auf allen Geräten.</p>
   <div class="card"><h2>Neues Match</h2>
-  ${names.map((n, i) => `<input class="in" placeholder="Spieler ${i+1}" value="${esc(n)}" onchange="names[${i}]=this.value">`).join('')}
+  ${names.map((n, i) => `<div class="prow"><input class="in" placeholder="Spieler ${i+1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')}
   ${names.length < 4 ? '<button class="ghost" onclick="addP()">Spieler hinzufügen</button>' : ''}
   <div class="seg"><button class="${start===501?'on':''}" onclick="start=501;render()">501</button><button class="${start===301?'on':''}" onclick="start=301;render()">301</button></div>
   <div class="seg"><select class="in" onchange="legsW=+this.value">${opt([1,2,3,4,5], legsW, n => n + (n > 1 ? ' Legs' : ' Leg') + ' pro Satz')}</select>
@@ -119,7 +124,7 @@ function home() {
   <button class="main" onclick="create()">Match starten</button></div>
   <div class="card"><h2>Match beitreten</h2>
   <input class="in" id="code" placeholder="Code, z. B. K7QM2" maxlength="5" style="text-transform:uppercase">
-  <button class="main" onclick="openMatch($('#code').value.trim().toUpperCase())">Beitreten</button></div>
+  <div class="seg"><button class="main" onclick="openMatch($('#code').value.trim().toUpperCase())">Mitspielen</button><button class="main" style="background:none;color:var(--chalk);border-color:var(--line)" onclick="openMatch($('#code').value.trim().toUpperCase(), true)">Zuschauen</button></div></div>
   <button class="ghost" onclick="showStats()">Ranking und Statistiken</button></div>`;
 }
 
@@ -129,7 +134,7 @@ function col(p, i, c) {
   const shown = act && c.cur ? c.cur.d.map(lbl) : (p.v.length ? p.v.at(-1).d.map(lbl) : []);
   const bust = !act && p.v.length && p.v.at(-1).bust;
   return `<div class="col ${act ? 'act' : ''} ${c.winner === i ? 'won' : ''}">
-  <div class="nm">${esc(p.name)}</div><div class="num big">${p.rem}</div>
+  <div class="nm">${esc(p.name)}</div><div class="mute sm">${RL[p.rule]}</div><div class="num big">${p.rem}</div>
   <div class="mute sm">Sätze ${p.sets} / Legs ${p.legs}</div><div class="mute sm">Ø ${dr ? (pts / dr * 3).toFixed(1) : '–'}</div>
   <div class="last">${shown.map(x => `<span class="${bust ? 'bust' : ''}">${x}</span>`).join('')}</div></div>`;
 }
@@ -141,17 +146,19 @@ function pad() {
 }
 
 function matchView() {
-  const st = match.st, c = calc(st.cfg, st.ev);
+  const st = match.st, c = calc(st.cfg, st.ev), cp = c.P[c.turn];
   const left = 3 - (c.cur ? c.cur.d.length : 0);
-  const hint = c.winner === null ? route(c.P[c.turn].rem, left) : null;
-  const w = c.winner !== null ? `<div class="card win"><h2>${esc(c.P[c.winner].name)} gewinnt</h2>
-    <button class="main" onclick="rematch()">Revanche</button>
-    <button class="ghost" style="margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button></div>` : '';
+  const hint = !watch && c.winner === null ? route(cp.rem, left, cp.rule) : null;
+  const w = c.winner !== null ? `<div class="card win"><h2>${esc(c.P[c.winner].name)} gewinnt</h2>${watch ? '' : `<button class="main" onclick="rematch()">Revanche</button>
+    <button class="ghost" style="margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button>`}</div>` : '';
+  const sh = shareOpen && !watch ? `<div class="seg"><button onclick="share(false)">Link zum Mitspielen</button><button onclick="share(true)">Link für Zuschauer</button></div>` : '';
+  const bottom = c.winner !== null ? w : watch ? `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>`
+    : `<div class="hint">${hint ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`;
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button>
-  <span class="mute">Code <b style="color:var(--chalk)">${match.id}</b></span>
-  <span><button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> <button class="ghost" onclick="share()">Teilen</button></span></div>
+  <span class="mute">${watch ? 'Zuschauer' : 'Code'} <b style="color:var(--chalk)">${match.id}</b></span>
+  <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}
   <div class="board" style="--n:${c.P.length}">${c.P.map((p, i) => col(p, i, c)).join('')}</div>
-  ${c.winner !== null ? w : `<div class="hint">${hint ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`}</div>`;
+  ${bottom}</div>`;
 }
 
 // ---------- Statistiken ----------
@@ -170,7 +177,7 @@ function agg(rows) {
         if (v.sum === 180) s.h180++; else if (v.sum >= 140) s.h140++;
         seen[v.leg] = (seen[v.leg] || 0) + 1;
         if (seen[v.leg] <= 3) { s.f9 += v.sum; s.f9d += v.d.length; }
-        if (v.before <= 170 && route(v.before)) { s.ch++; if (v.win) { s.co++; s.hf = Math.max(s.hf, v.sum); } }
+        if (route(v.before, 3, p.rule)) { s.ch++; if (v.win) { s.co++; s.hf = Math.max(s.hf, v.sum); } }
       }
       s.pts += pts; s.dr += dr; s.av.push(dr ? pts / dr * 3 : 0);
     });
@@ -205,26 +212,27 @@ function toast(t) {
 }
 
 // ---------- Aktionen ----------
-function addP() { names.push(''); render(); }
+function addP() { names.push(''); outs.push('double'); render(); }
 function code() {
   const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({length: 5}, () => c[Math.random() * c.length | 0]).join('');
 }
-async function create(list = names, cfg0 = { start, legs: legsW, sets: setsW }) {
-  const ps = list.map(n => n.trim()).filter(Boolean);
+async function create(list = names, cfg0 = { start, legs: legsW, sets: setsW }, ol = outs) {
+  const ps = [], os = [];
+  list.forEach((n, i) => { if (n.trim()) { ps.push(n.trim()); os.push(ol[i] || 'double'); } });
   if (ps.length < 2) return toast('Mindestens zwei Spieler eintragen');
   const id = code();
-  const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps }, ev: [] } });
+  const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps, outs: os }, ev: [] } });
   if (error) return toast('Match konnte nicht erstellt werden');
   openMatch(id);
 }
-async function openMatch(id) {
+async function openMatch(id, w = false) {
   const { data, error } = await db.from('matches').select('state').eq('id', id).maybeSingle();
   if (error || !data) return toast('Match nicht gefunden');
   if (!data.state.cfg) return toast('Dieses Match stammt aus der alten Version');
   leave(true);
-  match = { id, st: data.state }; mult = 1;
-  history.replaceState(null, '', '?m=' + id);
+  match = { id, st: data.state }; mult = 1; watch = !!w; shareOpen = false;
+  history.replaceState(null, '', '?m=' + id + (watch ? '&w=1' : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
     p => { match.st = p.new.state; render(); }).subscribe();
   camJoin(id); render();
@@ -239,6 +247,7 @@ async function save() {
   if (error) toast('Speichern fehlgeschlagen');
 }
 function dart(x) {
+  if (watch) return;
   const st = match.st, c = calc(st.cfg, st.ev);
   if (c.winner !== null) return;
   let e;
@@ -252,15 +261,18 @@ function dart(x) {
   render(); save();
 }
 function undo() {
+  if (watch) return;
   if (!match.st.ev.length) return toast('Nichts zum Zurücknehmen');
   match.st.ev.pop(); render(); save();
 }
 function rematch() {
-  const cfg = match.st.cfg, ps = [...cfg.players]; ps.push(ps.shift());
-  create(ps, { start: cfg.start, legs: cfg.legs, sets: cfg.sets });
+  const cfg = match.st.cfg, ps = [...cfg.players], os = cfg.outs ? [...cfg.outs] : ps.map(() => 'double');
+  ps.push(ps.shift()); os.push(os.shift());
+  create(ps, { start: cfg.start, legs: cfg.legs, sets: cfg.sets }, os);
 }
-async function share() {
-  const url = location.origin + location.pathname + '?m=' + match.id;
+async function share(w) {
+  const url = location.origin + location.pathname + '?m=' + match.id + (w ? '&w=1' : '');
+  shareOpen = false; render();
   if (navigator.share) { try { await navigator.share({ title: 'Dart-Abend', url }); return; } catch (e) {} }
   try { await navigator.clipboard.writeText(url); toast('Link kopiert'); } catch (e) { toast(url); }
 }
@@ -404,8 +416,8 @@ async function toggleCam() {
 
 // ---------- Start ----------
 render();
-const m0 = new URLSearchParams(location.search).get('m');
-if (m0) openMatch(m0.toUpperCase());
+const q0 = new URLSearchParams(location.search), m0 = q0.get('m');
+if (m0) openMatch(m0.toUpperCase(), q0.get('w') === '1');
 </script>
 </body>
 </html>
