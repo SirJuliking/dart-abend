@@ -186,7 +186,7 @@ function matchView() {
   const pc = watch ? '' : `<div style="margin:0 0 8px"><button class="ghost" style="padding:6px 10px;font-size:.85rem" onclick="showPc=!showPc;render()">${showPc ? 'Spielercode verbergen' : 'Spielercode anzeigen'}</button></div>`
     + (showPc ? `<div class="card win" style="margin:0 0 10px"><div class="mute sm">Spielercode (nur für Mitspieler)</div><div class="num" style="font-size:1.8rem">${esc(psec)}</div><button class="ghost" onclick="copyPc()">Kopieren</button></div>` : '');
   const bottom = c.winner !== null ? w : watch ? viewerPanel(c)
-    : `<div class="hint">${hint && S.chk ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`;
+    : `<div class="hint">${hint && S.chk ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${clipBar()}${pad()}`;
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button>
   <span class="mute">Zuschauer-Code <b style="color:var(--chalk)">${match.st.vc || match.id}</b></span>
   <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="toggleVoice()" aria-label="Ton an oder aus">${S.on ? '🔊' : '🔇'}</button> <button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button> <button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}${pc}
@@ -255,6 +255,7 @@ function endView(c) {
   <div class="mute sm">${cfg.sets > 1 ? 'Sätze, Legs insgesamt ' + legs : 'Legs'}</div>
   <div style="overflow-x:auto;margin-top:12px"><table class="et"><tr><th></th>${c.P.map(p => `<th style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</th>`).join('')}</tr>${tr}</table></div>
   ${throwLog(c)}
+  ${clipWin()}
   ${watch ? '' : '<button class="main" onclick="rematch()">Revanche</button><button class="ghost" style="width:100%;margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button>'}
   <button class="ghost" style="width:100%;margin-top:8px" onclick="showStats()">Zum Ranking</button></div>`;
 }
@@ -490,7 +491,7 @@ function viewerPanel(c) {
     const tr = R.map(([l, g, f, b]) => { const v = M.map(g), top = Math.max(...v), mark = b && top > 0 && new Set(v).size > 1; return `<tr><td>${l}</td>${M.map((m, i) => `<td class="${mark && v[i] === top ? 'bst' : ''}">${f(m)}</td>`).join('')}</tr>`; }).join('');
     body = `<div style="overflow-x:auto"><table class="et"><tr><th></th>${c.P.map(p => `<th style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</th>`).join('')}</tr>${tr}</table></div>`;
   }
-  return `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>${tabs}<div class="card" style="margin-top:0">${body}</div>`;
+  return `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>${clipBar()}${tabs}<div class="card" style="margin-top:0">${body}</div>`;
 }
 function throwLog(c) {
   const legs = [...new Set(c.P.flatMap(p => p.v.map(v => v.leg)))].sort((a, b) => a - b);
@@ -502,7 +503,7 @@ function throwLog(c) {
   return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
 }
 
-function render() { if (match) hear(); $('#app').innerHTML = (match ? matchView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : ''); }
+function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -542,7 +543,7 @@ async function openMatch(id, sec = null) {
   history.replaceState(null, '', '?m=' + id + (sec ? '&p=' + sec : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
     p => { match.st = p.new.state; render(); }).subscribe();
-  camJoin(id); wake(); render();
+  camJoin(id); wake(); clipStart(); render();
 }
 async function joinCode() {
   const raw = $('#code').value.trim().toUpperCase().replace(/\s/g, '');
@@ -560,7 +561,7 @@ async function joinCode() {
 }
 function leave(keep) {
   if (channel) db.removeChannel(channel);
-  channel = null; match = null; camLeave(); unwake();
+  channel = null; match = null; camLeave(); unwake(); clipStop();
   if (!keep) { view = 'home'; loadKnown(); history.replaceState(null, '', location.pathname); render(); }
 }
 async function save() {
@@ -607,7 +608,7 @@ function copyPc() {
 // ---------- Einstellungen und Ansage ----------
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-const DEF = { on: true, vol: 100, a100: true, achk: true, awin: true, voice: 'auto', chk: true, wake: true, vib: false, cam: 'environment' };
+const DEF = { on: true, vol: 100, a100: true, achk: true, awin: true, voice: 'auto', chk: true, wake: true, vib: false, cam: 'environment', clip: true, clipL: 15 };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(lsGet('ds') || '{}') }; } catch (e) {}
 if (lsGet('dv') === '0' && !lsGet('ds')) S.on = false;
@@ -687,7 +688,7 @@ function toggleVoice() {
   toast(S.on ? (pack && S.voice === 'auto' ? 'Ton an (deine Aufnahmen)' : 'Ton an (Gerätestimme)') : 'Ton aus');
   render();
 }
-function setS(k, v) { S[k] = v; saveS(); if (k === 'wake') (v ? wake() : unwake()); if (k === 'on' && !v) stopAll(); render(); }
+function setS(k, v) { S[k] = v; saveS(); if (k === 'wake') (v ? wake() : unwake()); if (k === 'on' && !v) stopAll(); if ((k === 'clip' || k === 'clipL') && match) { clipOff(); clipStart(); } render(); }
 function volSet(v) { S.vol = +v; saveS(); }
 function toggleSet() { showSet = !showSet; render(); }
 function probe() { unlock(); speak([{ t: 'Einhundertachtzig!', k: ['n180'] }]); }
@@ -711,6 +712,9 @@ function setPanel() {
   <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn')}
   <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button><p class="mute sm">${audioStatus()}</p>
   <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
+  <h3>Clips</h3>${cb('clip', 'Clip-Aufnahme (Highlights speichern)')}
+  <div class="srow"><span>Clip-Länge (ca.)</span><select onchange="setS('clipL', +this.value)">${op('clipL', 10, '10 bis 20 Sekunden')}${op('clipL', 15, '15 bis 30 Sekunden')}${op('clipL', 20, '20 bis 40 Sekunden')}</select></div>
+  <p class="mute sm">Nimmt die gezeigte Kamera im Hintergrund auf. Auf schwächeren Geräten bitte ausschalten.</p>
   <h3>Gerät</h3>${cb('vib', 'Vibration beim Eintragen (nur Android)')}
   <div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>
   <h3>App</h3><div class="srow"><span>App aufs Handy legen</span><button class="ghost" onclick="installApp()">Installieren</button></div>
@@ -879,6 +883,113 @@ async function toggleCam() {
   stream = zoomHW ? raw : digital(raw);
   const t = tile('me', 'Du'); t.querySelector('video').srcObject = stream; t.hidden = false; updBox();
   sig({ t: 'hello' }); render();
+}
+
+// ---------- Clips: letzte Aufnahme und Gewinnwurf speichern ----------
+// Zwei Aufnahmen laufen versetzt im Hintergrund und werden nach 2 x Clip-Länge neu gestartet.
+// Bei einer abgeschlossenen Aufnahme wird die ältere gestoppt: das ergibt eine komplette, abspielbare Datei.
+const CL = { src: null, r: [null, null], tm: null, type: '', ext: 'webm', ok: false };
+const clips = { visit: null, win: null };
+let cw = { n: 0, vis: 0 }, clipSeq = 0;
+function clipFmt() {
+  if (!window.MediaRecorder) return false;
+  if (!CL.ok) {
+    CL.ok = true;
+    for (const t of ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
+      if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) { CL.type = t; CL.ext = t.startsWith('video/mp4') ? 'mp4' : 'webm'; break; }
+  }
+  return true;
+}
+function clipSrc() {
+  const ts = [...document.querySelectorAll('#camBox .tile')].filter(t => !t.hidden);
+  const t = ts.find(x => x.classList.contains('big')) || ts[0];
+  const v = t && t.querySelector('video'), m = v && v.srcObject;
+  return m && m.active && m.getVideoTracks().length ? m : null;
+}
+function clipStartRec(i, src) {
+  try {
+    const o = { videoBitsPerSecond: 1500000 }; if (CL.type) o.mimeType = CL.type;
+    const mr = new MediaRecorder(src, o), r = { mr, t0: Date.now(), ch: [] };
+    mr.ondataavailable = e => { if (e.data && e.data.size) r.ch.push(e.data); };
+    mr.start(1000);
+    CL.r[i] = r;
+  } catch (e) { CL.r[i] = null; }
+}
+function clipDrop(i) {
+  const r = CL.r[i]; CL.r[i] = null;
+  if (r) { r.mr.ondataavailable = null; try { if (r.mr.state !== 'inactive') r.mr.stop(); } catch (e) {} }
+}
+function clipOff() { clipDrop(0); clipDrop(1); CL.src = null; }
+function clipTick() {
+  if (!match || !S.clip || !clipFmt()) return clipOff();
+  const src = clipSrc();
+  if (src !== CL.src) { clipOff(); CL.src = src; }
+  if (!src) return;
+  const L = S.clipL * 1000, now = Date.now();
+  for (let i = 0; i < 2; i++) if (CL.r[i] && now - CL.r[i].t0 >= 2 * L) { clipDrop(i); clipStartRec(i, src); }
+  if (!CL.r[0] && !CL.r[1]) clipStartRec(0, src);
+  else if (!(CL.r[0] && CL.r[1])) { const a = CL.r[0] || CL.r[1]; if (now - a.t0 >= L) clipStartRec(CL.r[0] ? 1 : 0, src); }
+}
+function clipStart() {
+  clips.visit = clips.win = null; clipSeq++;
+  clearInterval(CL.tm); CL.tm = null;
+  if (!match || !S.clip) return;
+  const st = match.st; cw = { n: st.ev.length, vis: nVis(calc(st.cfg, st.ev)) };
+  CL.tm = setInterval(clipTick, 2000);
+}
+function clipStop() { clearInterval(CL.tm); CL.tm = null; clipOff(); clips.visit = clips.win = null; clipSeq++; }
+function clipSnap() {
+  return new Promise(res => {
+    const now = Date.now(), src = CL.src;
+    let k = -1;
+    for (let i = 0; i < 2; i++) if (CL.r[i] && now - CL.r[i].t0 > 3000 && (k < 0 || CL.r[i].t0 < CL.r[k].t0)) k = i;
+    if (k < 0 || !src) return res(null);
+    const r = CL.r[k]; CL.r[k] = null;
+    let done = false;
+    const fin = () => {
+      if (done) return; done = true;
+      const type = r.mr.mimeType || CL.type || 'video/webm';
+      res(r.ch.length ? { blob: new Blob(r.ch, { type }), type, ext: type.includes('mp4') ? 'mp4' : 'webm', secs: Math.round((now - r.t0) / 1000) } : null);
+    };
+    r.mr.onstop = fin; setTimeout(fin, 3000);
+    try { r.mr.stop(); } catch (e) { fin(); }
+    clipStartRec(k, src);
+  });
+}
+async function clipWatch() {
+  if (!S.clip || !match) return;
+  const st = match.st, n = st.ev.length;
+  if (n === cw.n) return;
+  if (n < cw.n) { cw = { n, vis: nVis(calc(st.cfg, st.ev)) }; clips.visit = clips.win = null; clipSeq++; return; }
+  const c = calc(st.cfg, st.ev), vis = nVis(c), was = cw.vis; cw = { n, vis };
+  if (vis <= was) return;
+  const last = c.P.flatMap(p => p.v.map(v => ({ p, v }))).sort((a, b) => b.v.n - a.v.n)[0];
+  const info = { name: last.p.name, sum: last.v.sum, bust: !!last.v.bust, win: c.winner !== null };
+  const mine = match, seq = ++clipSeq;
+  const cl = await clipSnap();
+  if (match !== mine || seq !== clipSeq || !cl) return;
+  Object.assign(cl, info);
+  clips.visit = cl; if (info.win) clips.win = cl;
+  render();
+}
+const clipWin = () => clips.win ? `<button class="main" style="margin-bottom:6px" onclick="saveClip('win')">🎬 Gewinnwurf speichern (${esc(clips.win.name)})</button>` : '';
+function clipBar() {
+  if (!S.clip || !window.MediaRecorder) return '';
+  const c = clips.visit;
+  if (!c) return CL.src ? '<div class="mute sm" style="text-align:center;margin:6px 0">● Clip-Aufnahme läuft</div>' : '';
+  return `<button class="ghost" style="width:100%;margin:6px 0" onclick="saveClip('visit')">🎬 Letzte Aufnahme speichern (${esc(c.name)}, ${c.bust ? 'Bust' : c.sum})</button>`;
+}
+async function saveClip(k) {
+  const c = clips[k]; if (!c) return toast('Kein Clip vorhanden');
+  const d = new Date(), z = x => String(x).padStart(2, '0');
+  const name = `dart-${k === 'win' ? 'gewinnwurf' : 'aufnahme'}-${z(d.getHours())}${z(d.getMinutes())}.${c.ext}`;
+  try {
+    const f = new File([c.blob], name, { type: c.type });
+    if (matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Dart-Abend' }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(c.blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  toast('Clip wird gespeichert');
 }
 
 // ---------- Start ----------
