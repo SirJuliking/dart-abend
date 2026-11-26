@@ -41,10 +41,18 @@ const items = [
   { k: 'n25', num: 25, say: W(25) },
   ...Array.from({ length: 81 }, (_, i) => 100 + i).filter(n => !BAD.includes(n)).map(n => ({ k: 'n' + n, num: n, say: W(n) + (n === 180 ? '!  (gern mit Schwung)' : '') }))
 ];
+// Zusatz-Modus (aufnehmen.html?zusatz): nur die neuen Ansagen, ergibt sprache2.wav und sprache2.json
+const ZUSATZ = location.search.includes('zusatz');
+if (ZUSATZ) {
+  const NEU = [{ k: 'darts', say: 'Darts' }, { k: 'bust', say: 'Bust' },
+    ...Array.from({ length: 40 }, (_, i) => 21 + i).filter(n => n !== 25).map(n => ({ k: 'n' + n, num: n, say: W(n) }))];
+  items.length = 0; items.push(...NEU);
+}
+const SUF = ZUSATZ ? '2' : '';
 let cur = 0, rec = {}, mr = null, stream = null, chunks = [], recording = false, msgText = '', built = null;
 
 // Zwischenspeicher im Browser, damit nichts verloren geht
-const dbp = new Promise((res, rej) => { const r = indexedDB.open('darts-rec', 1); r.onupgradeneeded = () => r.result.createObjectStore('c'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const dbp = new Promise((res, rej) => { const r = indexedDB.open('darts-rec' + (ZUSATZ ? '-zusatz' : ''), 1); r.onupgradeneeded = () => r.result.createObjectStore('c'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const idb = async (mode, fn) => { const d = await dbp; return new Promise((res, rej) => { const tx = d.transaction('c', mode), rq = fn(tx.objectStore('c')); tx.oncomplete = () => res(rq && rq.result); tx.onerror = () => rej(tx.error); }); };
 async function restore() {
   try {
@@ -57,8 +65,8 @@ async function restore() {
 
 function render() {
   const it = items[cur], n = Object.keys(rec).length;
-  document.getElementById('app').innerHTML = `<h1>Stimme aufnehmen</h1>
-  <p class="mute">Sprich jeden Begriff einzeln ein. Stille am Anfang und Ende wird automatisch entfernt.</p>
+  document.getElementById('app').innerHTML = `<h1>Stimme aufnehmen${ZUSATZ ? ' (Zusatz)' : ''}</h1>
+  <p class="mute">${ZUSATZ ? 'Nur die neuen Ansagen. Nimm sie mit demselben Mikrofon und im selben Raum auf wie das Hauptpaket. ' : ''}Sprich jeden Begriff einzeln ein. Stille am Anfang und Ende wird automatisch entfernt.</p>
   <div class="bar"><i style="width:${n / items.length * 100}%"></i></div>
   <div class="mute">Aufgenommen: ${n} von ${items.length}</div>
   <div class="card"><div class="mute">${cur + 1} von ${items.length}</div>
@@ -72,8 +80,8 @@ function render() {
   <p class="mute">${msgText}</p>
   <button class="main" onclick="build()">Sprachpaket erstellen</button>
   ${built ? `<div class="card"><p>Fertig. Lade beide Dateien herunter und lege sie in dein GitHub-Repository.</p>
-  <a class="btn main" href="${built.wav}" download="sprache.wav">sprache.wav herunterladen</a>
-  <a class="btn main" href="${built.json}" download="sprache.json">sprache.json herunterladen</a></div>` : ''}`;
+  <a class="btn main" href="${built.wav}" download="sprache${SUF}.wav">sprache${SUF}.wav herunterladen</a>
+  <a class="btn main" href="${built.json}" download="sprache${SUF}.json">sprache${SUF}.json herunterladen</a></div>` : ''}`;
 }
 function go(d) { cur = Math.min(items.length - 1, Math.max(0, cur + d)); render(); }
 function play() { const a = new Audio(URL.createObjectURL(rec[items[cur].k])); a.play(); }

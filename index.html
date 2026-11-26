@@ -923,7 +923,7 @@ function copyPc() {
 // ---------- Einstellungen und Ansage ----------
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-const DEF = { on: true, vol: 100, a100: true, achk: true, awin: true, voice: 'auto', chk: true, wake: true, vib: false, cam: 'environment', clip: true, clipL: 15 };
+const DEF = { on: true, vol: 100, a100: true, achk: true, awin: true, voice: 'auto', chk: true, wake: true, vib: false, cam: 'environment', clip: true, clipL: 15, abust: true };
 let S = { ...DEF };
 try { S = { ...DEF, ...JSON.parse(lsGet('ds') || '{}') }; } catch (e) {}
 if (lsGet('dv') === '0' && !lsGet('ds')) S.on = false;
@@ -942,8 +942,14 @@ function phrases(cfg, ev, h) {
       if (S.awin) {
         if (after.winner !== null) say(`Spiel, Satz und Match, ${ap.name}`, ['match', pk]);
         else if (ap.sets > bp.sets) say(`Satz für ${ap.name}`, ['satz_fuer', pk]);
-        else say(`Leg für ${ap.name}`, ['leg_fuer', pk]);
+        else {
+          const n = ap.v.filter(q => q.leg === v.leg).reduce((a, q) => a + q.d.length, 0), pi = pack && pack.idx;
+          const withN = pi && pi.darts && pi['n' + n];
+          say(`Leg für ${ap.name}, in ${n} Darts`, withN ? ['leg_fuer', pk, 'n' + n, 'darts'] : ['leg_fuer', pk]);
+        }
       }
+    } else if (v.bust) {
+      if (S.abust && !(pack && S.voice === 'auto' && !pack.idx.bust)) say('Bust', ['bust']);
     } else if (S.a100 && v.sum === 180) say('Einhundertachtzig!', ['n180']);
     else if (S.a100 && v.sum >= 100) say(String(v.sum), ['n' + v.sum]);
   }
@@ -964,7 +970,16 @@ async function loadPack() {
     const [j, w] = await Promise.all([fetch('sprache.json'), fetch('sprache.wav')]);
     if (!j.ok || !w.ok) return;
     const idx = await j.json();
-    pack = { idx, buf: await a.decodeAudioData(await w.arrayBuffer()) };
+    const buf = await a.decodeAudioData(await w.arrayBuffer());
+    Object.values(idx).forEach(g => { g.b = buf; });
+    pack = { idx, buf };
+  } catch (e) { return; }
+  // Optionales Zusatz-Paket (neue Ansagen), ergänzt das Hauptpaket
+  try {
+    const [j2, w2] = await Promise.all([fetch('sprache2.json'), fetch('sprache2.wav')]);
+    if (!j2.ok || !w2.ok) return;
+    const i2 = await j2.json(), b2 = await getAc().decodeAudioData(await w2.arrayBuffer());
+    Object.keys(i2).forEach(k => { i2[k].b = b2; pack.idx[k] = i2[k]; });
   } catch (e) {}
 }
 function stopAll() {
@@ -980,7 +995,7 @@ function speak(list) {
     list.forEach(x => {
       x.k.forEach(c => {
         const g = pack.idx[c], src = ac.createBufferSource();
-        src.buffer = pack.buf; src.connect(gain); src.start(at, g.s, g.e - g.s);
+        src.buffer = g.b || pack.buf; src.connect(gain); src.start(at, g.s, g.e - g.s);
         playing.push(src); at += g.e - g.s + 0.04;
       });
       at += 0.25;
@@ -1024,7 +1039,7 @@ function setPanel() {
   <h3>Ton</h3>${cb('on', 'Ton und Ansage')}
   <div class="srow"><span>Lautstärke</span><input type="range" min="0" max="100" value="${S.vol}" oninput="volSet(this.value)" aria-label="Lautstärke"></div>
   <div class="srow"><span>Stimme</span><select onchange="setS('voice', this.value)">${op('voice', 'auto', 'Meine Aufnahmen')}${op('voice', 'device', 'Gerätestimme')}</select></div>
-  <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn')}
+  <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn (Leg mit Anzahl Darts)')}${cb('abust', 'Bust')}
   <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button><p class="mute sm">${audioStatus()}</p>
   <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
   <h3>Clips</h3>${cb('clip', 'Clip-Aufnahme (Highlights speichern)')}
