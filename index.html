@@ -74,6 +74,7 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 td.bst{color:var(--green);font-weight:700}
 .et th:nth-child(n+2),.et td:nth-child(n+2){text-align:right}
+.cust{margin:0;text-align:center}.cust.on{border-color:var(--chalk);border-width:2px;font-weight:700}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}
 .ht{display:flex;flex-direction:column;justify-content:flex-start;gap:14px;min-height:150px;text-align:left;padding:16px;border-radius:16px}
 .ht .ic{font-size:2.1rem;line-height:1}.ht b{font-family:Oswald,Impact,sans-serif;font-size:1.6rem;display:block}.ht span.s{font-size:.85rem;opacity:.8}
@@ -147,6 +148,13 @@ function calc(cfg, ev) {
 const nVis = c => c.P.reduce((a, p) => a + p.v.length, 0);
 
 // ---------- Ansichten ----------
+const custIn = (v, vn) => `<input class="in cust ${v !== 301 && v !== 501 ? 'on' : ''}" type="number" inputmode="numeric" min="2" max="1501" placeholder="Eigene" aria-label="Eigene Startzahl" value="${v !== 301 && v !== 501 ? v : ''}" onchange="setCust('${vn}', this.value)">`;
+function setCust(vn, v) {
+  const n = parseInt(v, 10);
+  if (!(n >= 2 && n <= 1501)) { toast('Bitte eine Zahl von 2 bis 1501 eingeben'); return render(); }
+  if (vn === 'start') start = n; else tstart = n;
+  render();
+}
 function newView() {
   const opt = (arr, cur, f) => arr.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${f(n)}</option>`).join('');
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Neues Match</h1>
@@ -154,7 +162,7 @@ function newView() {
   ${names.map((n, i) => `<div class="prow"><input class="in" placeholder="Spieler ${i+1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')}
   ${chips()}
   ${names.length < 4 ? '<button class="ghost" onclick="addP()">Spieler hinzufügen</button>' : ''}
-  <div class="seg"><button class="${start===501?'on':''}" onclick="start=501;render()">501</button><button class="${start===301?'on':''}" onclick="start=301;render()">301</button></div>
+  <div class="seg"><button class="${start===301?'on':''}" onclick="start=301;render()">301</button><button class="${start===501?'on':''}" onclick="start=501;render()">501</button>${custIn(start, 'start')}</div>
   <div class="seg"><select class="in" onchange="legsW=+this.value">${opt([1,2,3,4,5], legsW, n => n + (n > 1 ? ' Legs' : ' Leg') + ' pro Satz')}</select>
   <select class="in" onchange="setsW=+this.value">${opt([1,2,3,4,5], setsW, n => n + (n > 1 ? ' Sätze' : ' Satz') + ' zum Sieg')}</select></div>
   <button class="main" onclick="create()">Match starten</button></div>
@@ -461,10 +469,11 @@ function board(f) {
   return `<svg viewBox="0 0 340 340" width="100%" style="max-width:340px;display:block;margin:0 auto" role="img" aria-label="Trefferverteilung auf der Dartscheibe">${out}</svg>`;
 }
 function playerView() {
-  const o = profile(pk), tr = trainOf(pk), back = `<div class="top"><button class="ghost" onclick="backTo(pfrom)">‹ ${pfrom === 'stats' ? 'Ranking' : 'Training'}</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div>`;
-  if (!o.g && !tr.length) return `<div class="wrap">${back}<p class="mute">Für diesen Spieler gibt es keine Daten.</p></div>`;
+  const o = profile(pk), tr = trainOf(pk), nHid = trainAll(pk).length - tr.length, back = `<div class="top"><button class="ghost" onclick="backTo(pfrom)">‹ ${pfrom === 'stats' ? 'Ranking' : 'Training'}</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div>`;
+  const rest = nHid ? `<button class="ghost" style="width:100%;margin-top:8px" onclick="trainRestore()">Ausgeblendete Trainingsdaten zurückholen (${nHid})</button>` : '';
+  if (!o.g && !tr.length) return `<div class="wrap">${back}<h1>${esc(pk)}</h1><p class="mute">Keine sichtbaren Daten.</p>${rest}</div>`;
   const tabs = `<div class="seg"><button class="${ptab === 'm' || !o.g ? '' : ''}${ptab === 'm' && o.g ? 'on' : ''}" onclick="ptab='m';render()">Matches</button><button class="${ptab === 't' || !o.g ? 'on' : ''}" onclick="ptab='t';render()">Training</button></div>`;
-  if (ptab === 't' || !o.g) return `<div class="wrap">${back}<h1>${esc(o.g ? o.n : tr[0].state.tr.name)}</h1>${o.g ? tabs : ''}${trainTab(tr)}</div>`;
+  if (ptab === 't' || !o.g) return `<div class="wrap">${back}<h1>${esc(o.g ? o.n : tr[0].state.tr.name)}</h1>${o.g ? tabs : ''}${trainTab(tr)}${rest}</div>`;
   const col = colorOf(o.n), tot = o.m.reduce((a, b) => a + b, 0) || 1, pr = x => Math.round(x / tot * 100);
   const kv = [['Average', o.dr ? (o.pts / o.dr * 3).toFixed(1) : '–'], ['First 9', o.f9d ? (o.f9 / o.f9d * 3).toFixed(1) : '–'], ['Ø pro Dart', o.dr ? (o.pts / o.dr).toFixed(1) : '–'],
     ['Höchste Aufnahme', o.hi], ['Höchstes Finish', o.hf || '–'], ['180er', o.h180], ['140+', o.h140], ['100+', o.h100],
@@ -617,7 +626,14 @@ async function loadTrain() {
   const { data } = await db.from('matches').select('id,created_at,state').like('id', 'TR-%').order('created_at').limit(1000);
   TRN = data || [];
 }
-const trainOf = k => TRN.filter(r => r.state.tr && !r.state.tr.x && r.state.tr.ev.length && r.state.tr.name.trim().toLowerCase() === k);
+const trainAll = k => TRN.filter(r => r.state.tr && r.state.tr.ev.length && r.state.tr.name.trim().toLowerCase() === k);
+const trainOf = k => trainAll(k).filter(r => !r.state.tr.x);
+async function trainRestore() {
+  const rows = trainAll(pk).filter(r => r.state.tr.x);
+  rows.forEach(r => { delete r.state.tr.x; });
+  await Promise.all(rows.map(r => db.from('matches').update({ state: r.state }).eq('id', r.id)));
+  toast('Trainingsdaten zurückgeholt'); render();
+}
 async function trainReset() {
   const rows = trainOf(pk);
   if (!rows.length || !confirm('Alle Trainingsdaten von ' + rows[0].state.tr.name + ' ausblenden?')) return;
@@ -643,7 +659,7 @@ function tsetup() {
          <select class="in" onchange="tgoal=+this.value">${opt([0, 40, 50, 60, 70, 80, 100], tgoal, n => n ? 'Ziel-Average ' + n : 'Kein Ziel-Average')}</select>`
       : `<p class="mute sm">Wirf auf ein Feld. Gezählt werden deine Treffer.</p><select class="in" onchange="tfield=this.value">${opt(TFIELDS, tfield, n => n === 'Bull' ? 'Bull' : n === '25' ? '25' : n)}</select><select class="in" onchange="tn=+this.value">${cntF}</select>`);
   else o = `<p class="mute sm">Spiele alleine 301 oder 501 und zähle deine Darts pro Leg.</p>
-    <div class="seg"><button class="${tstart === 501 ? 'on' : ''}" onclick="tstart=501;render()">501</button><button class="${tstart === 301 ? 'on' : ''}" onclick="tstart=301;render()">301</button></div>
+    <div class="seg"><button class="${tstart === 301 ? 'on' : ''}" onclick="tstart=301;render()">301</button><button class="${tstart === 501 ? 'on' : ''}" onclick="tstart=501;render()">501</button>${custIn(tstart, 'tstart')}</div>
     <select class="in" onchange="tlegs=+this.value">${opt([1, 3, 5, 10], tlegs, n => n + (n > 1 ? ' Legs' : ' Leg'))}</select>`;
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Training</h1>
   <p class="mute">Nur für dich allein. Die Ergebnisse stehen im Spielerprofil unter „Training“, nicht im Ranking.</p>
