@@ -262,13 +262,13 @@ function endView(c) {
 
 // ---------- Daten laden, ausblenden ----------
 const PAL = ['#3DAA74', '#E4483D', '#F2C14E', '#5AA9E6', '#B08BDB', '#F28C4E', '#4FD1C5', '#E879A6'];
-let HID = { hp: [], hm: [] }, ROWS = [], VIS = [], SC = null, known = [], edit = false, pk = '', duelA = '', duelB = '', histF = '', RK = [];
+let HID = { hp: [], hm: [], hs: [] }, ROWS = [], VIS = [], SC = null, known = [], knownAll = [], chipEdit = false, edit = false, pk = '', duelA = '', duelB = '', histF = '', RK = [];
 const colorOf = n => PAL[SC.list.map(s => s.n.toLowerCase()).sort().indexOf(n.toLowerCase()) % PAL.length];
 const pc0 = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
 const dt = x => { const d = new Date(x); return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); };
 async function loadHid() {
   const { data } = await db.from('matches').select('state').eq('id', '_CONFIG').maybeSingle();
-  if (data && data.state) HID = { hp: data.state.hp || [], hm: data.state.hm || [] };
+  if (data && data.state) HID = { hp: data.state.hp || [], hm: data.state.hm || [], hs: data.state.hs || [] };
 }
 async function saveHid() {
   const { error } = await db.from('matches').upsert({ id: '_CONFIG', state: HID, finished: false });
@@ -281,14 +281,34 @@ async function loadKnown() {
   const cnt = {};
   (data || []).forEach(x => x.cfg && x.cfg.players && x.cfg.players.forEach(n => { const k = n.trim(); cnt[k] = (cnt[k] || 0) + 1; }));
   const old = JSON.stringify(known);
-  known = Object.keys(cnt).filter(n => !HID.hp.includes(n.toLowerCase())).sort((a, b) => cnt[b] - cnt[a]).slice(0, 14);
+  knownAll = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); refreshKnown();
   if (!match && view === 'home' && old !== JSON.stringify(known) && document.activeElement.tagName !== 'INPUT') render();
 }
-function chips() {
-  if (!known.length) return '';
-  const sel = names.map(x => x.trim().toLowerCase());
-  return `<div class="mute sm">Spieler antippen:</div><div class="chips">${known.map((n, i) => `<button class="chip ${sel.includes(n.toLowerCase()) ? 'on' : ''}" onclick="pick(${i})">${esc(n)}</button>`).join('')}</div>`;
+function refreshKnown() {
+  const off = n => HID.hp.includes(n.toLowerCase()) || (HID.hs || []).includes(n.toLowerCase());
+  known = knownAll.filter(n => !off(n)).slice(0, 14);
 }
+function chips() {
+  HID.hs = HID.hs || [];
+  if (!known.length && !HID.hs.length) return '';
+  const sel = names.map(x => x.trim().toLowerCase());
+  const list = known.map((n, i) => `<button class="chip ${!chipEdit && sel.includes(n.toLowerCase()) ? 'on' : ''}" onclick="${chipEdit ? 'hideChip(' + i + ')' : 'pick(' + i + ')'}">${esc(n)}${chipEdit ? ' ✕' : ''}</button>`).join('');
+  if (!chipEdit) return `<div class="mute sm">Spieler antippen:</div><div class="chips">${list}</div><button class="lnk mute sm" style="margin:0 0 10px" onclick="chipEdit=true;render()">Vorschläge bearbeiten</button>`;
+  return `<div class="mute sm">Tippe einen Namen an, um ihn auszublenden. Ranking und Statistiken bleiben unverändert.</div><div class="chips">${list || '<span class="mute sm">Keine Vorschläge mehr.</span>'}</div>
+  <div class="chips">${known.length ? '<button class="ghost" onclick="resetChips()">Alle ausblenden</button>' : ''}${HID.hs.length ? '<button class="ghost" onclick="restoreChips()">Ausgeblendete zurückholen</button>' : ''}<button class="ghost" onclick="chipEdit=false;render()">Fertig</button></div>`;
+}
+function hideChip(i) {
+  const k = known[i] && known[i].toLowerCase(); if (!k) return;
+  if (!HID.hs.includes(k)) HID.hs.push(k);
+  refreshKnown(); saveHid(); render();
+}
+function resetChips() {
+  const n = knownAll.filter(x => !HID.hp.includes(x.toLowerCase()) && !HID.hs.includes(x.toLowerCase())).length;
+  if (!confirm(`Alle ${n} vorgeschlagenen Spieler ausblenden?\nRanking und Statistiken bleiben unverändert. Das gilt für alle Mitspieler der App.`)) return;
+  knownAll.forEach(x => { if (!HID.hs.includes(x.toLowerCase())) HID.hs.push(x.toLowerCase()); });
+  refreshKnown(); saveHid(); render();
+}
+function restoreChips() { HID.hs = []; refreshKnown(); saveHid(); render(); }
 function pick(i) {
   const n = known[i], j = names.findIndex(x => x.trim().toLowerCase() === n.toLowerCase());
   if (j >= 0) names[j] = '';
@@ -531,6 +551,9 @@ async function create(list = names, cfg0 = { start, legs: legsW, sets: setsW }, 
   const id = code(), sec = lcode(5), vc = await newVc();
   const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps, outs: os }, ev: [], ph: await sha(sec), vc } });
   if (error) return toast('Match konnte nicht erstellt werden');
+  // Wer von Hand eingetragen und gespielt hat, erscheint wieder bei den Vorschlägen
+  const back = (HID.hs || []).filter(k => ps.some(n => n.toLowerCase() === k));
+  if (back.length) { HID.hs = HID.hs.filter(k => !back.includes(k)); refreshKnown(); saveHid(); }
   openMatch(id, sec);
 }
 async function openMatch(id, sec = null) {
