@@ -94,7 +94,7 @@ td.bst{color:var(--green);font-weight:700}
 const db = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let names = ['', ''], outs = ['double', 'double'], watch = false, psec = '', showPc = false, shareOpen = false, start = 501, legsW = 3, setsW = 1, match = null, channel = null, mult = 1;
+let names = ['', ''], outs = ['double', 'double'], watch = false, vtab = 'throws', psec = '', showPc = false, shareOpen = false, start = 501, legsW = 3, setsW = 1, match = null, channel = null, mult = 1;
 
 // ---------- Checkout-Weg (Double-Out) ----------
 const D = [];
@@ -119,11 +119,12 @@ function calc(cfg, ev) {
   const n = cfg.players.length;
   const P = cfg.players.map((name, i) => ({ name, rule: (cfg.outs || [])[i] || 'double', rem: cfg.start, legs: 0, sets: 0, v: [] }));
   let leg = 0, starter = 0, turn = 0, cur = null, winner = null;
-  for (const [m, x] of ev) {
+  for (let ei = 0; ei < ev.length; ei++) {
+    const [m, x] = ev[ei];
     if (winner !== null) break;
     const p = P[turn];
     if (!cur) cur = { before: p.rem, d: [], sum: 0, leg };
-    cur.d.push([m, x]); cur.sum += m * x;
+    cur.d.push([m, x]); cur.sum += m * x; cur.n = ei;
     const after = cur.before - cur.sum;
     const okFin = p.rule === 'single' || (p.rule === 'master' ? m >= 2 : m === 2);
     if (after < 0 || (after === 1 && p.rule !== 'single') || (after === 0 && !okFin)) {
@@ -153,8 +154,8 @@ function home() {
   <select class="in" onchange="setsW=+this.value">${opt([1,2,3,4,5], setsW, n => n + (n > 1 ? ' Sätze' : ' Satz') + ' zum Sieg')}</select></div>
   <button class="main" onclick="create()">Match starten</button></div>
   <div class="card"><h2>Match beitreten</h2>
-  <input class="in" id="code" placeholder="Code oder Spielercode" maxlength="14" autocapitalize="characters" style="text-transform:uppercase">
-  <p class="mute sm" style="margin:0 0 8px">Mit dem normalen Code schaust du zu. Mit dem Spielercode kannst du mitspielen und eintragen.</p>
+  <input class="in" id="code" placeholder="Code eingeben" maxlength="14" autocapitalize="characters" style="text-transform:uppercase">
+  <p class="mute sm" style="margin:0 0 8px">Mit dem Zahlen-Code (3 Ziffern) schaust du zu. Mit dem Buchstaben-Code kannst du mitspielen und eintragen.</p>
   <button class="main" onclick="joinCode()">Beitreten</button></div>
   <div class="seg"><button class="ghost" onclick="showStats()">Ranking und Statistiken</button><button class="ghost" onclick="toggleSet()">⚙ Einstellungen</button></div></div>`;
 }
@@ -183,11 +184,11 @@ function matchView() {
   const w = c.winner !== null ? endView(c) : '';
   const sh = shareOpen && !watch ? `<div class="seg"><button onclick="share(false)">Link zum Mitspielen</button><button onclick="share(true)">Link für Zuschauer</button></div>` : '';
   const pc = watch ? '' : `<div style="margin:0 0 8px"><button class="ghost" style="padding:6px 10px;font-size:.85rem" onclick="showPc=!showPc;render()">${showPc ? 'Spielercode verbergen' : 'Spielercode anzeigen'}</button></div>`
-    + (showPc ? `<div class="card win" style="margin:0 0 10px"><div class="mute sm">Spielercode (nur für Mitspieler)</div><div class="num" style="font-size:1.8rem">${esc(match.id + '-' + psec)}</div><button class="ghost" onclick="copyPc()">Kopieren</button></div>` : '');
-  const bottom = c.winner !== null ? w : watch ? `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>`
+    + (showPc ? `<div class="card win" style="margin:0 0 10px"><div class="mute sm">Spielercode (nur für Mitspieler)</div><div class="num" style="font-size:1.8rem">${esc(psec)}</div><button class="ghost" onclick="copyPc()">Kopieren</button></div>` : '');
+  const bottom = c.winner !== null ? w : watch ? viewerPanel(c)
     : `<div class="hint">${hint && S.chk ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`;
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button>
-  <span class="mute">Zuschauer-Code <b style="color:var(--chalk)">${match.id}</b></span>
+  <span class="mute">Zuschauer-Code <b style="color:var(--chalk)">${match.st.vc || match.id}</b></span>
   <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="toggleVoice()" aria-label="Ton an oder aus">${S.on ? '🔊' : '🔇'}</button> <button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button> <button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}${pc}
   <div class="board" style="--n:${c.P.length}">${c.P.map((p, i) => col(p, i, c)).join('')}</div>
   ${bottom}</div>`;
@@ -221,10 +222,10 @@ function agg(rows) {
 // Werte eines beendeten Matches (für den Endscreen)
 function mstats(c) {
   return c.P.map(p => {
-    const m = { avg: 0, f9: 0, h180: 0, h140: 0, h100: 0, hf: 0, ch: 0, co: 0, best: 0, darts: 0, legs: 0 };
+    const m = { hi: 0, avg: 0, f9: 0, h180: 0, h140: 0, h100: 0, hf: 0, ch: 0, co: 0, best: 0, darts: 0, legs: 0 };
     let pts = 0, f9 = 0, f9d = 0; const seen = {}, ld = {};
     for (const v of p.v) {
-      m.darts += v.d.length; pts += v.sum; ld[v.leg] = (ld[v.leg] || 0) + v.d.length;
+      m.hi = Math.max(m.hi, v.sum); m.darts += v.d.length; pts += v.sum; ld[v.leg] = (ld[v.leg] || 0) + v.d.length;
       if (v.sum === 180) m.h180++; else if (v.sum >= 140) m.h140++; else if (v.sum >= 100) m.h100++;
       seen[v.leg] = (seen[v.leg] || 0) + 1; if (seen[v.leg] <= 3) { f9 += v.sum; f9d += v.d.length; }
       if (route(v.before, 3, p.rule)) m.ch++;
@@ -475,6 +476,22 @@ function duelView() {
   <table class="et" style="margin-top:8px"><tr><th></th><th style="color:${cA}">${esc(A ? A.n : a)}</th><th style="color:${cB}">${esc(B ? B.n : b)}</th></tr>${tr}</table></div>
   <div class="card"><h2>Matches</h2>${[...d.rows].reverse().map(matchRow).join('')}</div>`}</div>`;
 }
+function viewerPanel(c) {
+  const cp = c.P[c.turn], M = mstats(c);
+  const tabs = `<div class="seg"><button class="${vtab === 'throws' ? 'on' : ''}" onclick="vtab='throws';render()">Letzte Würfe</button><button class="${vtab === 'stats' ? 'on' : ''}" onclick="vtab='stats';render()">Stats</button></div>`;
+  let body;
+  if (vtab === 'throws') {
+    const all = c.P.flatMap(p => p.v.map(v => ({ p, v }))).sort((a, b) => b.v.n - a.v.n).slice(0, 8);
+    const live = c.cur ? `<div class="hrow" style="cursor:default"><div><b>${esc(cp.name)}</b> wirft gerade<div class="mute sm">${c.cur.d.map(lbl).join(' ')}</div></div><b class="num">${c.cur.sum}</b></div>` : '';
+    body = live + (all.map(({ p, v }) => `<div class="hrow" style="cursor:default"><div><b>${esc(p.name)}</b><div class="mute sm">${v.d.map(lbl).join(' ')}${v.win ? ', Checkout' : ''}</div></div><b class="num" style="${v.bust ? 'color:var(--red)' : v.sum >= 100 ? 'color:var(--green)' : ''}">${v.bust ? 'Bust' : v.sum}</b></div>`).join('') || (live ? '' : '<p class="mute">Noch keine Würfe.</p>'));
+  } else {
+    const R = [['Average', m => m.avg, m => m.darts ? m.avg.toFixed(1) : '–', 1], ['First 9', m => m.f9, m => m.darts ? m.f9.toFixed(1) : '–', 1], ['Höchste Aufnahme', m => m.hi, m => m.hi || '–', 1],
+      ['180er', m => m.h180, m => m.h180, 1], ['140+', m => m.h140, m => m.h140, 1], ['100+', m => m.h100, m => m.h100, 1], ['Darts', m => m.darts, m => m.darts, 0]];
+    const tr = R.map(([l, g, f, b]) => { const v = M.map(g), top = Math.max(...v), mark = b && top > 0 && new Set(v).size > 1; return `<tr><td>${l}</td>${M.map((m, i) => `<td class="${mark && v[i] === top ? 'bst' : ''}">${f(m)}</td>`).join('')}</tr>`; }).join('');
+    body = `<div style="overflow-x:auto"><table class="et"><tr><th></th>${c.P.map(p => `<th style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</th>`).join('')}</tr>${tr}</table></div>`;
+  }
+  return `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>${tabs}<div class="card" style="margin-top:0">${body}</div>`;
+}
 function throwLog(c) {
   const legs = [...new Set(c.P.flatMap(p => p.v.map(v => v.leg)))].sort((a, b) => a - b);
   const body = legs.map(l => {
@@ -498,12 +515,20 @@ function code(n = 5) {
   const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({length: n}, () => c[Math.random() * c.length | 0]).join('');
 }
+const lcode = n => Array.from({ length: n }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random() * 24 | 0]).join('');
+async function newVc() {
+  const since = new Date(Date.now() - 864e5).toISOString();
+  const { data } = await db.from('matches').select('v:state->>vc').gte('created_at', since);
+  const used = new Set((data || []).map(x => x.v));
+  for (let i = 0; i < 200; i++) { const c = String(100 + Math.random() * 900 | 0); if (!used.has(c)) return c; }
+  return String(100 + Math.random() * 900 | 0);
+}
 async function create(list = names, cfg0 = { start, legs: legsW, sets: setsW }, ol = outs) {
   const ps = [], os = [];
   list.forEach((n, i) => { if (n.trim()) { ps.push(n.trim()); os.push(ol[i] || 'double'); } });
   if (ps.length < 2) return toast('Mindestens zwei Spieler eintragen');
-  const id = code(), sec = code(8);
-  const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps, outs: os }, ev: [], ph: await sha(sec) } });
+  const id = code(), sec = lcode(5), vc = await newVc();
+  const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps, outs: os }, ev: [], ph: await sha(sec), vc } });
   if (error) return toast('Match konnte nicht erstellt werden');
   openMatch(id, sec);
 }
@@ -519,9 +544,18 @@ async function openMatch(id, sec = null) {
     p => { match.st = p.new.state; render(); }).subscribe();
   camJoin(id); wake(); render();
 }
-function joinCode() {
-  const [id, sec] = $('#code').value.trim().toUpperCase().replace(/\s/g, '').split('-');
-  if (!id) return toast('Bitte einen Code eingeben');
+async function joinCode() {
+  const raw = $('#code').value.trim().toUpperCase().replace(/\s/g, '');
+  if (!raw) return toast('Bitte einen Code eingeben');
+  if (/^\d{3}$/.test(raw)) {
+    const { data } = await db.from('matches').select('id').eq('state->>vc', raw).order('created_at', { ascending: false }).limit(1);
+    return data && data.length ? openMatch(data[0].id) : toast('Code nicht gefunden');
+  }
+  if (/^[A-Z]{4,5}$/.test(raw)) {
+    const { data } = await db.from('matches').select('id').eq('state->>ph', await sha(raw)).order('created_at', { ascending: false }).limit(1);
+    if (data && data.length) return openMatch(data[0].id, raw);
+  }
+  const [id, sec] = raw.split('-');
   openMatch(id, sec || null);
 }
 function leave(keep) {
@@ -566,7 +600,7 @@ async function share(w) {
 }
 
 function copyPc() {
-  const t = match.id + '-' + psec;
+  const t = psec;
   navigator.clipboard.writeText(t).then(() => toast('Spielercode kopiert'), () => toast(t));
 }
 
