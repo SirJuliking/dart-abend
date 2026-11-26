@@ -74,6 +74,11 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 td.bst{color:var(--green);font-weight:700}
 .et th:nth-child(n+2),.et td:nth-child(n+2){text-align:right}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}
+.ht{display:flex;flex-direction:column;justify-content:flex-start;gap:14px;min-height:150px;text-align:left;padding:16px;border-radius:16px}
+.ht .ic{font-size:2.1rem;line-height:1}.ht b{font-family:Oswald,Impact,sans-serif;font-size:1.6rem;display:block}.ht span.s{font-size:.85rem;opacity:.8}
+.ht.g{background:var(--green);border-color:var(--green);color:#0c1d1a}.ht.r{background:var(--red);border-color:var(--red);color:#fff}
+details summary{cursor:pointer;color:var(--mute);margin:6px 0}
 .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .kv div{background:var(--bg);border-radius:10px;padding:8px 10px}
 .kv b{display:block;font-family:Oswald,sans-serif;font-size:1.3rem;font-weight:700}
@@ -142,10 +147,10 @@ function calc(cfg, ev) {
 const nVis = c => c.P.reduce((a, p) => a + p.v.length, 0);
 
 // ---------- Ansichten ----------
-function home() {
+function newView() {
   const opt = (arr, cur, f) => arr.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${f(n)}</option>`).join('');
-  return `<div class="wrap"><h1>Dart-Abend</h1><p class="mute">Spielstand live auf allen Geräten.</p>
-  <div class="card"><h2>Neues Match</h2>
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Neues Match</h1>
+  <div class="card">
   ${names.map((n, i) => `<div class="prow"><input class="in" placeholder="Spieler ${i+1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')}
   ${chips()}
   ${names.length < 4 ? '<button class="ghost" onclick="addP()">Spieler hinzufügen</button>' : ''}
@@ -153,11 +158,24 @@ function home() {
   <div class="seg"><select class="in" onchange="legsW=+this.value">${opt([1,2,3,4,5], legsW, n => n + (n > 1 ? ' Legs' : ' Leg') + ' pro Satz')}</select>
   <select class="in" onchange="setsW=+this.value">${opt([1,2,3,4,5], setsW, n => n + (n > 1 ? ' Sätze' : ' Satz') + ' zum Sieg')}</select></div>
   <button class="main" onclick="create()">Match starten</button></div>
-  <div class="card"><h2>Match beitreten</h2>
-  <input class="in" id="code" placeholder="Code eingeben" maxlength="14" autocapitalize="characters" style="text-transform:uppercase">
+  </div>`;
+}
+
+function home() {
+  return `<div class="wrap"><h1>Dart-Abend</h1><p class="mute">Spielstand live auf allen Geräten.</p>
+  <div class="tiles">
+  <button class="ht g" onclick="nav('new')"><span class="ic">🎯</span><span><b>Match</b><span class="s">Neues Spiel gegen Freunde</span></span></button>
+  <button class="ht r" onclick="nav('tsetup')"><span class="ic">🏋️</span><span><b>Training</b><span class="s">Alleine üben</span></span></button>
+  <button class="ht" onclick="nav('join')"><span class="ic">🔑</span><span><b>Beitreten</b><span class="s">Mit Code zuschauen oder mitspielen</span></span></button>
+  <button class="ht" onclick="showStats()"><span class="ic">📊</span><span><b>Ranking</b><span class="s">Statistiken und Profile</span></span></button>
+  </div>
+  <button class="ghost" style="width:100%" onclick="toggleSet()">⚙ Einstellungen</button></div>`;
+}
+function joinView() {
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Beitreten</h1>
+  <div class="card"><input class="in" id="code" placeholder="Code eingeben" maxlength="14" autocapitalize="characters" style="text-transform:uppercase">
   <p class="mute sm" style="margin:0 0 8px">Mit dem Zahlen-Code (3 Ziffern) schaust du zu. Mit dem Buchstaben-Code kannst du mitspielen und eintragen.</p>
-  <button class="main" onclick="joinCode()">Beitreten</button></div>
-  <div class="seg"><button class="ghost" onclick="showStats()">Ranking und Statistiken</button><button class="ghost" onclick="toggleSet()">⚙ Einstellungen</button></div></div>`;
+  <button class="main" onclick="joinCode()">Beitreten</button></div></div>`;
 }
 
 function col(p, i, c) {
@@ -262,6 +280,8 @@ function endView(c) {
 
 // ---------- Daten laden, ausblenden ----------
 const PAL = ['#3DAA74', '#E4483D', '#F2C14E', '#5AA9E6', '#B08BDB', '#F28C4E', '#4FD1C5', '#E879A6'];
+let TS = null, TRN = [], pfrom = 'stats', ptab = 'm', tname = '', tkind = 'fin', tvar = 'free', tn = 10, trange = 170, tgoal = 0, tfield = 'T20', tstart = 501, tlegs = 3, trule = 'double', tpool = {};
+try { tname = localStorage.getItem('dn') || ''; } catch (e) {}
 let HID = { hp: [], hm: [], hs: [] }, ROWS = [], VIS = [], SC = null, known = [], knownAll = [], chipEdit = false, edit = false, pk = '', duelA = '', duelB = '', histF = '', RK = [];
 const colorOf = n => PAL[SC.list.map(s => s.n.toLowerCase()).sort().indexOf(n.toLowerCase()) % PAL.length];
 const pc0 = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
@@ -276,13 +296,13 @@ async function saveHid() {
 }
 async function loadKnown() {
   await loadHid();
-  let { data, error } = await db.from('matches').select('cfg:state->cfg').neq('id', '_CONFIG').order('created_at', { ascending: false }).limit(300);
-  if (error) { const r = await db.from('matches').select('state').neq('id', '_CONFIG').limit(300); data = (r.data || []).map(x => ({ cfg: x.state.cfg })); }
+  let { data, error } = await db.from('matches').select('cfg:state->cfg').neq('id', '_CONFIG').not('id', 'like', 'TR-%').order('created_at', { ascending: false }).limit(300);
+  if (error) { const r = await db.from('matches').select('state').neq('id', '_CONFIG').not('id', 'like', 'TR-%').limit(300); data = (r.data || []).map(x => ({ cfg: x.state.cfg })); }
   const cnt = {};
   (data || []).forEach(x => x.cfg && x.cfg.players && x.cfg.players.forEach(n => { const k = n.trim(); cnt[k] = (cnt[k] || 0) + 1; }));
   const old = JSON.stringify(known);
   knownAll = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); refreshKnown();
-  if (!match && view === 'home' && old !== JSON.stringify(known) && document.activeElement.tagName !== 'INPUT') render();
+  if (!match && ['home', 'new', 'tsetup'].includes(view) && old !== JSON.stringify(known) && document.activeElement.tagName !== 'INPUT') render();
 }
 function refreshKnown() {
   const off = n => HID.hp.includes(n.toLowerCase()) || (HID.hs || []).includes(n.toLowerCase());
@@ -320,10 +340,14 @@ function pick(i) {
 }
 function recompute() { VIS = ROWS.filter(r => r.state.cfg && !HID.hm.includes(r.id)); SC = agg(VIS); }
 function nav(v) { view = v; render(); scrollTo(0, 0); }
-async function showStats() {
+async function loadStatsData() {
   const [r] = await Promise.all([db.from('matches').select('id,created_at,state').eq('finished', true).order('created_at'), loadHid()]);
-  if (r.error) return toast('Statistiken konnten nicht geladen werden');
-  ROWS = r.data; recompute(); leave(true); edit = false; nav('stats');
+  if (r.error) { toast('Statistiken konnten nicht geladen werden'); return false; }
+  ROWS = r.data; recompute(); return true;
+}
+async function showStats() {
+  if (!await loadStatsData()) return;
+  leave(true); edit = false; nav('stats');
 }
 function hidePlayer(k) {
   const n = SC.list.find(s => s.n.toLowerCase() === k).n;
@@ -334,7 +358,7 @@ function hidePlayer(k) {
 }
 function showPlayerAt(i) { HID.hp.splice(i, 1); recompute(); saveHid(); render(); }
 function toggleMatch(id) { const i = HID.hm.indexOf(id); if (i < 0) HID.hm.push(id); else HID.hm.splice(i, 1); recompute(); saveHid(); render(); }
-function openPlayer(n) { pk = n.toLowerCase(); nav('player'); }
+function openPlayer(n) { pk = n.toLowerCase(); pfrom = 'stats'; ptab = 'm'; nav('player'); }
 function openDuel(a, b) { duelA = a; duelB = b; nav('duel'); }
 function openHist(f) { histF = f || ''; nav('hist'); }
 function backTo(v) { nav(v); }
@@ -437,8 +461,10 @@ function board(f) {
   return `<svg viewBox="0 0 340 340" width="100%" style="max-width:340px;display:block;margin:0 auto" role="img" aria-label="Trefferverteilung auf der Dartscheibe">${out}</svg>`;
 }
 function playerView() {
-  const o = profile(pk), back = `<div class="top"><button class="ghost" onclick="backTo('stats')">‹ Ranking</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div>`;
-  if (!o.g) return `<div class="wrap">${back}<p class="mute">Für diesen Spieler gibt es keine Daten.</p></div>`;
+  const o = profile(pk), tr = trainOf(pk), back = `<div class="top"><button class="ghost" onclick="backTo(pfrom)">‹ ${pfrom === 'stats' ? 'Ranking' : 'Training'}</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div>`;
+  if (!o.g && !tr.length) return `<div class="wrap">${back}<p class="mute">Für diesen Spieler gibt es keine Daten.</p></div>`;
+  const tabs = `<div class="seg"><button class="${ptab === 'm' || !o.g ? '' : ''}${ptab === 'm' && o.g ? 'on' : ''}" onclick="ptab='m';render()">Matches</button><button class="${ptab === 't' || !o.g ? 'on' : ''}" onclick="ptab='t';render()">Training</button></div>`;
+  if (ptab === 't' || !o.g) return `<div class="wrap">${back}<h1>${esc(o.g ? o.n : tr[0].state.tr.name)}</h1>${o.g ? tabs : ''}${trainTab(tr)}</div>`;
   const col = colorOf(o.n), tot = o.m.reduce((a, b) => a + b, 0) || 1, pr = x => Math.round(x / tot * 100);
   const kv = [['Average', o.dr ? (o.pts / o.dr * 3).toFixed(1) : '–'], ['First 9', o.f9d ? (o.f9 / o.f9d * 3).toFixed(1) : '–'], ['Ø pro Dart', o.dr ? (o.pts / o.dr).toFixed(1) : '–'],
     ['Höchste Aufnahme', o.hi], ['Höchstes Finish', o.hf || '–'], ['180er', o.h180], ['140+', o.h140], ['100+', o.h100],
@@ -452,6 +478,7 @@ function playerView() {
   const duels = opps.map(({ n, d }) => `<tr><td><button class="lnk" onclick="openDuel('${pk.replace(/'/g, "\\'")}', '${n.toLowerCase().replace(/'/g, "\\'")}')">${esc(n)}</button></td><td>${d.rows.length}</td><td>${d.A ? d.A.w : 0} : ${d.B ? d.B.w : 0}</td><td>${d.A && d.A.dr ? (d.A.pts / d.A.dr * 3).toFixed(1) : '–'} : ${d.B && d.B.dr ? (d.B.pts / d.B.dr * 3).toFixed(1) : '–'}</td></tr>`).join('');
   return `<div class="wrap">${back}<h1><span class="dot" style="background:${col}"></span>${esc(o.n)}</h1>
   <p class="mute">${o.g} ${o.g === 1 ? 'Spiel' : 'Spiele'}, ${o.w} ${o.w === 1 ? 'Sieg' : 'Siege'} (${pc0(o.w, o.g)})</p>
+  ${tabs}
   <div class="card"><h2>Kennzahlen</h2><div class="kv">${kv.map(([l, v]) => `<div><span class="mute sm">${l}</span><b>${v}</b></div>`).join('')}</div></div>
   <div class="card"><h2>Wurfprofil</h2>
   <div class="stack" role="img" aria-label="Verteilung der Darts"><i style="width:${pr(o.m[0])}%;background:#4a6366"></i><i style="width:${pr(o.m[1])}%;background:var(--chalk)"></i><i style="width:${pr(o.m[2])}%;background:var(--red)"></i><i style="width:${pr(o.m[3])}%;background:var(--green)"></i></div>
@@ -463,6 +490,253 @@ function playerView() {
   <div class="card"><h2>Average-Verlauf</h2>${chart([{ n: o.n, av: o.av }], VIS.length, () => col)}</div>
   <div class="card" style="overflow-x:auto"><h2>Duelle</h2><table><tr><th>Gegner</th><th>Spiele</th><th>Siege</th><th>Ø</th></tr>${duels || '<tr><td colspan="4" class="mute">Noch keine Duelle.</td></tr>'}</table><p class="mute sm">Siege und Average: du zuerst, dann der Gegner.</p></div>
   <div class="card"><h2>Letzte Matches</h2>${[...o.rows].reverse().slice(0, 5).map(matchRow).join('')}<button class="ghost" style="width:100%;margin-top:8px" onclick="openHist(pk)">Alle Matches</button></div></div>`;
+}
+
+// ---------- Training ----------
+// Eine Trainingseinheit steht in der Tabelle matches mit der ID "TR-...". Sie hat kein "cfg" und ist nie "finished",
+// darum taucht sie weder im Ranking, noch im Verlauf, noch bei den Namensvorschlägen auf.
+const TK = { fin: 'Finishing', sc: 'Scoring', fld: 'Zielfeld', leg: 'Legs' };
+const TFIELDS = ['T20', 'T19', 'T18', 'T17', 'T16', 'T15', 'D20', 'D16', 'D10', 'D8', 'Bull', '25'];
+const tparse = l => l === 'Bull' ? [2, 25] : l === '25' ? [1, 25] : [{ D: 2, T: 3 }[l[0]], +l.slice(1)];
+const tkey = e => e[1] === 25 ? (e[0] === 2 ? 'Bull' : 'S25') : 'SDT'[e[0] - 1] + e[1];
+function dartEv(x) {
+  if (x === 0) return [0, 0];
+  if (x === 'B') return [2, 25];
+  if (x === 25) { if (mult === 3) { toast('Triple 25 gibt es nicht'); return null; } return [mult === 2 ? 2 : 1, 25]; }
+  return [mult, x];
+}
+function trand() {
+  const key = TS.rule + TS.o.range;
+  if (!tpool[key]) { tpool[key] = []; for (let r = TS.rule === 'single' ? 1 : 2; r <= TS.o.range; r++) if (route(r, 3, TS.rule)) tpool[key].push(r); }
+  const last = TS.rs[TS.rs.length - 1], pool = tpool[key].filter(r => r !== last);
+  return pool[Math.random() * pool.length | 0];
+}
+function tcalc(s) {
+  const out = { vis: [], cur: null, done: !!s.done };
+  if (s.kind === 'leg') { out.c = calc(s.cfg, s.ev); out.done = out.done || out.c.winner !== null; return out; }
+  const tg = s.kind === 'fld' ? tparse(s.o.field) : null;
+  let cur = null;
+  for (const e of s.ev) {
+    if (s.kind === 'fin') {
+      if (!cur) { const r = s.rs[out.vis.length]; cur = { r, rem: r, d: [] }; }
+      const after = cur.rem - e[0] * e[1];
+      cur.d.push(e);
+      const okF = s.rule === 'single' || (s.rule === 'master' ? e[0] >= 2 : e[0] === 2);
+      if (after === 0 && okF) { cur.ok = true; cur.rem = 0; out.vis.push(cur); cur = null; }
+      else if (after <= 0 || (after === 1 && s.rule !== 'single') || cur.d.length === 3) { cur.ok = false; out.vis.push(cur); cur = null; }
+      else cur.rem = after;
+    } else {
+      if (!cur) cur = { d: [], sum: 0, hits: 0 };
+      cur.d.push(e); cur.sum += e[0] * e[1];
+      if (tg && e[0] === tg[0] && e[1] === tg[1]) cur.hits++;
+      if (cur.d.length === 3) { out.vis.push(cur); cur = null; }
+    }
+  }
+  out.cur = cur;
+  if (s.o.n && out.vis.length >= s.o.n) out.done = true;
+  return out;
+}
+function tstat(s) {
+  const c = tcalc(s), o = { kind: s.kind, darts: 0, pts: 0, vis: 0, h100: 0, h140: 0, h180: 0 };
+  const big = sum => { if (sum === 180) o.h180++; else if (sum >= 140) o.h140++; else if (sum >= 100) o.h100++; };
+  if (s.kind === 'fin') {
+    o.darts = s.ev.length; o.att = c.vis.length; o.ok = c.vis.filter(v => v.ok).length; o.per = {};
+    c.vis.forEach(v => { const p = o.per[v.r] ??= [0, 0]; p[0]++; if (v.ok) p[1]++; });
+  } else if (s.kind === 'leg') {
+    const P = c.c.P[0], by = {}; o.ch = 0; o.co = 0;
+    P.v.forEach(v => {
+      o.vis++; o.pts += v.sum; o.darts += v.d.length; big(v.sum);
+      const l = by[v.leg] ??= { d: 0, w: false }; l.d += v.d.length; if (v.win) l.w = true;
+      if (route(v.before, 3, s.rule)) { o.ch++; if (v.win) o.co++; }
+    });
+    o.legs = Object.values(by).filter(l => l.w).map(l => l.d);
+  } else {
+    c.vis.forEach(v => { o.vis++; big(v.sum); });
+    const all = c.vis.concat(c.cur ? [c.cur] : []);
+    o.hits = 0; all.forEach(v => { o.darts += v.d.length; o.pts += v.sum; o.hits += v.hits; });
+    o.hv = [0, 0, 0, 0]; c.vis.forEach(v => o.hv[v.hits]++);
+  }
+  o.avg = o.darts ? o.pts / o.darts * 3 : 0;
+  return o;
+}
+async function tsave() {
+  if (!TS.ev.length && !TS.saved) return;
+  TS.saved = 1;
+  const { error } = await db.from('matches').upsert({ id: TS.id, state: { tr: TS }, finished: false, updated_at: new Date().toISOString() });
+  if (error) toast('Speichern fehlgeschlagen');
+}
+function trainGo() {
+  const name = tname.trim();
+  if (!name) return toast('Bitte einen Namen eingeben');
+  try { localStorage.setItem('dn', name); } catch (e) {}
+  const kind = tkind === 'sc' && tvar === 'field' ? 'fld' : tkind;
+  TS = { id: 'TR-' + code(6), name, kind, rule: trule, ts: Date.now(), ev: [], o: { n: kind === 'leg' ? 0 : tn, range: trange, goal: tgoal, field: tfield } };
+  if (kind === 'fin') { TS.rs = []; TS.rs.push(trand()); }
+  if (kind === 'leg') TS.cfg = { start: tstart, legs: tlegs, sets: 1, players: [name], outs: [trule] };
+  mult = 1; wake(); render(); scrollTo(0, 0);
+}
+function trainLeave() {
+  TS = null; camLeave(); unwake(); view = 'tsetup'; loadKnown(); render();
+}
+function tdart(x) {
+  const e = dartEv(x); if (!e) return;
+  const c = tcalc(TS); if (c.done) return;
+  if (S.vib && navigator.vibrate) navigator.vibrate(12);
+  TS.ev.push(e); mult = 1;
+  const c2 = tcalc(TS);
+  if (TS.kind === 'fin' && c2.vis.length > c.vis.length) {
+    toast(c2.vis.at(-1).ok ? 'Checkout!' : 'Nicht geschafft');
+    if (!c2.done) TS.rs.push(trand());
+  }
+  if (TS.kind === 'leg') {
+    const P = c2.c.P[0], v = nVis(c2.c) > nVis(c.c) ? P.v.at(-1) : null;
+    if (v && v.bust) toast('Bust'); else if (v && v.win) toast(c2.c.winner !== null ? 'Training geschafft' : 'Leg gewonnen');
+  }
+  render(); tsave();
+}
+function tundo() {
+  if (!TS.ev.length) return toast('Nichts zum Zurücknehmen');
+  TS.ev.pop(); TS.done = false;
+  if (TS.kind === 'fin') TS.rs.length = Math.min(TS.rs.length, tcalc(TS).vis.length + 1);
+  render(); tsave();
+}
+function trainEnd() { TS.done = true; render(); tsave(); }
+function trainAgain() {
+  const s = TS; TS = null;
+  tname = s.name; trule = s.rule; tkind = s.kind === 'fld' ? 'sc' : s.kind; tvar = s.kind === 'fld' ? 'field' : 'free';
+  trainGo();
+}
+async function openTrain() {
+  const n = tname.trim();
+  if (!n) return toast('Bitte zuerst einen Namen eingeben');
+  const [ok] = await Promise.all([loadStatsData(), loadTrain()]);
+  if (!ok) return;
+  pk = n.toLowerCase(); pfrom = 'tsetup'; ptab = 't'; nav('player');
+}
+async function loadTrain() {
+  const { data } = await db.from('matches').select('id,created_at,state').like('id', 'TR-%').order('created_at').limit(1000);
+  TRN = data || [];
+}
+const trainOf = k => TRN.filter(r => r.state.tr && !r.state.tr.x && r.state.tr.ev.length && r.state.tr.name.trim().toLowerCase() === k);
+async function trainReset() {
+  const rows = trainOf(pk);
+  if (!rows.length || !confirm('Alle Trainingsdaten von ' + rows[0].state.tr.name + ' ausblenden?')) return;
+  rows.forEach(r => { r.state.tr.x = 1; });
+  await Promise.all(rows.map(r => db.from('matches').update({ state: r.state }).eq('id', r.id)));
+  toast('Trainingsdaten ausgeblendet'); render();
+}
+
+function tsetup() {
+  const opt = (arr, cur, f) => arr.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${f(n)}</option>`).join('');
+  const seg = (cur, list, fn) => `<div class="seg">${list.map(([v, l]) => `<button class="${cur === v ? 'on' : ''}" onclick="${fn}">${l}</button>`.replace('$V', typeof v === 'string' ? "'" + v + "'" : v)).join('')}</div>`;
+  const cnt = opt([10, 20, 30, 0], tn, n => n ? n + ' Aufnahmen' : 'Offen (selbst beenden)');
+  const cntF = opt([10, 20, 30, 0], tn, n => n ? n + ' Aufnahmen (' + n * 3 + ' Darts)' : 'Offen (selbst beenden)');
+  const cntA = opt([10, 20, 30, 0], tn, n => n ? n + ' Versuche' : 'Offen (selbst beenden)');
+  const chipsT = known.length ? `<div class="chips">${known.map((n, i) => `<button class="chip ${tname.trim().toLowerCase() === n.toLowerCase() ? 'on' : ''}" onclick="tname=known[${i}];render()">${esc(n)}</button>`).join('')}</div>` : '';
+  let o = '';
+  if (tkind === 'fin') o = `<p class="mute sm">Du bekommst einen zufälligen Rest und hast 3 Darts zum Checkout. Danach kommt der nächste.</p>
+    <select class="in" onchange="tn=+this.value">${cntA}</select>
+    <select class="in" onchange="trange=+this.value">${opt([40, 100, 170], trange, n => 'Reste bis ' + n)}</select>`;
+  else if (tkind === 'sc') o = `<div class="seg"><button class="${tvar === 'free' ? 'on' : ''}" onclick="tvar='free';render()">Freies Scoring</button><button class="${tvar === 'field' ? 'on' : ''}" onclick="tvar='field';render()">Zielfeld</button></div>`
+    + (tvar === 'free'
+      ? `<p class="mute sm">Spiele eine feste Anzahl Aufnahmen. Gezählt werden Average, 100+, 140+ und 180.</p><select class="in" onchange="tn=+this.value">${cnt}</select>
+         <select class="in" onchange="tgoal=+this.value">${opt([0, 40, 50, 60, 70, 80, 100], tgoal, n => n ? 'Ziel-Average ' + n : 'Kein Ziel-Average')}</select>`
+      : `<p class="mute sm">Wirf auf ein Feld. Gezählt werden deine Treffer.</p><select class="in" onchange="tfield=this.value">${opt(TFIELDS, tfield, n => n === 'Bull' ? 'Bull' : n === '25' ? '25' : n)}</select><select class="in" onchange="tn=+this.value">${cntF}</select>`);
+  else o = `<p class="mute sm">Spiele alleine 301 oder 501 und zähle deine Darts pro Leg.</p>
+    <div class="seg"><button class="${tstart === 501 ? 'on' : ''}" onclick="tstart=501;render()">501</button><button class="${tstart === 301 ? 'on' : ''}" onclick="tstart=301;render()">301</button></div>
+    <select class="in" onchange="tlegs=+this.value">${opt([1, 3, 5, 10], tlegs, n => n + (n > 1 ? ' Legs' : ' Leg'))}</select>`;
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Training</h1>
+  <p class="mute">Nur für dich allein. Die Ergebnisse stehen im Spielerprofil unter „Training“, nicht im Ranking.</p>
+  <div class="card"><input class="in" placeholder="Dein Name" value="${esc(tname)}" onchange="tname=this.value" oninput="tname=this.value">${chipsT}
+  <select class="in" aria-label="Check-out-Regel" onchange="trule=this.value">${[['double', 'Double Out'], ['master', 'Master Out'], ['single', 'Single Out']].map(([v, l]) => `<option value="${v}" ${trule === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+  <div class="seg"><button class="${tkind === 'fin' ? 'on' : ''}" onclick="tkind='fin';tn=10;render()">Finishing</button><button class="${tkind === 'sc' ? 'on' : ''}" onclick="tkind='sc';tn=10;render()">Scoring</button><button class="${tkind === 'leg' ? 'on' : ''}" onclick="tkind='leg';render()">Legs</button></div>
+  <div class="card">${o}<button class="main" onclick="trainGo()">Training starten</button></div>
+  <button class="ghost" style="width:100%" onclick="openTrain()">Meine Trainingsstatistik</button></div>`;
+}
+
+function trainRun() {
+  const s = TS, c = tcalc(s), done = c.done, st = tstat(s);
+  const top = `<div class="top"><button class="ghost" onclick="trainLeave()">‹ Zurück</button><span class="mute">Training: ${TK[s.kind]}</span><span><button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> <button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></span></div>`;
+  const chipsOf = a => `<div class="last">${a.map(x => `<span>${x}</span>`).join('')}</div>`;
+  const hintOf = (r, left) => { const h = !done && S.chk ? route(r, left, s.rule) : null; return `<div class="hint">${h ? 'Checkout: <b>' + h.join(', ') + '</b>' : '&nbsp;'}</div>`; };
+  const end = !done && s.ev.length ? `<button class="ghost" style="width:100%;margin-top:10px" onclick="trainEnd()">Training beenden</button>` : '';
+  const cd = c.cur ? c.cur.d.map(lbl) : [];
+  let body = '';
+  if (s.kind === 'fin') {
+    const r = c.cur ? c.cur.rem : s.rs[c.vis.length], left = 3 - (c.cur ? c.cur.d.length : 0);
+    body = `<div class="card win"><div class="mute sm">Versuch ${c.vis.length + (done ? 0 : 1)}${s.o.n ? ' von ' + s.o.n : ''}, geschafft: ${st.ok} von ${st.att} (${pc0(st.ok, st.att)})</div>
+    ${done ? '' : `<div class="num big">${r}</div><div class="mute sm">${c.cur && c.cur.r !== r ? 'Start-Rest ' + c.cur.r + ', ' : ''}${RL[s.rule]}</div>${chipsOf(cd)}`}</div>
+    ${done ? '' : hintOf(r, left)}
+    ${chipsOf(c.vis.slice(-8).reverse().map(v => `${v.r} ${v.ok ? '✓' : '✗'}`))}`;
+  } else if (s.kind === 'sc' || s.kind === 'fld') {
+    const vn = c.vis.length + (done ? 0 : 1);
+    if (s.kind === 'sc') {
+      const g = s.o.goal, diff = st.darts ? st.avg - g : 0;
+      body = `<div class="card win"><div class="mute sm">Aufnahme ${vn}${s.o.n ? ' von ' + s.o.n : ''}</div>
+      <div class="num big">${st.darts ? st.avg.toFixed(1) : '–'}</div><div class="mute sm">Average${g ? ', Ziel ' + g + (st.darts ? ' (' + (diff >= 0 ? '+' : '') + diff.toFixed(1) + ')' : '') : ''}</div>
+      ${chipsOf(cd)}<div class="mute sm" style="margin-top:6px">100+: ${st.h100} · 140+: ${st.h140} · 180: ${st.h180}${c.vis.length ? ' · Letzte: ' + c.vis.at(-1).sum : ''}</div></div>`;
+    } else {
+      body = `<div class="card win"><div class="mute sm">Aufnahme ${vn}${s.o.n ? ' von ' + s.o.n : ''}, Ziel: ${s.o.field}</div>
+      <div class="num big">${st.hits}</div><div class="mute sm">Treffer bei ${st.darts} Darts (${pc0(st.hits, st.darts)})</div>
+      ${chipsOf(cd.map((x, i) => { const e = c.cur.d[i], t = tparse(s.o.field); return (e[0] === t[0] && e[1] === t[1] ? '✓ ' : '') + x; }))}
+      <div class="mute sm" style="margin-top:6px">Aufnahmen mit 0 / 1 / 2 / 3 Treffern: ${st.hv.join(' / ')}</div></div>`;
+    }
+  } else {
+    const P = c.c.P[0], left = 3 - (c.c.cur ? c.c.cur.d.length : 0), lg = c.c.winner !== null ? P.legs : P.legs + 1;
+    const ld = P.v.filter(v => v.leg === (c.c.cur ? c.c.cur.leg : P.v.length ? P.v.at(-1).leg + (P.v.at(-1).win ? 1 : 0) : 0)).reduce((a, v) => a + v.d.length, 0) + (c.c.cur ? c.c.cur.d.length : 0);
+    body = `<div class="card win"><div class="mute sm">Leg ${Math.min(lg, s.cfg.legs)} von ${s.cfg.legs}, ${RL[s.rule]}</div>
+    <div class="num big">${P.rem}</div><div class="mute sm">Darts in diesem Leg: ${ld} · Ø ${st.darts ? st.avg.toFixed(1) : '–'}${st.legs.length ? ' · Bestes Leg: ' + Math.min(...st.legs) : ''}</div>
+    ${chipsOf(c.c.cur ? c.c.cur.d.map(lbl) : (P.v.length ? P.v.at(-1).d.map(lbl) : []))}</div>${hintOf(P.rem, left)}`;
+  }
+  if (done) return `<div class="wrap">${top}${body}${trainDone(s, st)}</div>`;
+  return `<div class="wrap">${top}${body}${pad()}${end}</div>`;
+}
+function trainDone(s, st) {
+  const kv = s.kind === 'fin' ? [['Geschafft', st.ok + ' von ' + st.att], ['Quote', pc0(st.ok, st.att)]]
+    : s.kind === 'sc' ? [['Average', st.avg.toFixed(1)], ['Aufnahmen', st.vis], ['180er', st.h180], ['140+', st.h140], ['100+', st.h100], ['Ziel-Average', s.o.goal ? (st.avg >= s.o.goal ? 'erreicht' : 'verpasst') : '–']]
+    : s.kind === 'fld' ? [['Treffer', st.hits + ' von ' + st.darts], ['Quote', pc0(st.hits, st.darts)], ['3 Treffer', st.hv[3] + ' Aufnahmen']]
+    : [['Legs', st.legs.length], ['Ø Darts pro Leg', st.legs.length ? (st.legs.reduce((a, b) => a + b, 0) / st.legs.length).toFixed(1) : '–'], ['Bestes Leg', st.legs.length ? Math.min(...st.legs) + ' Darts' : '–'], ['Average', st.darts ? st.avg.toFixed(1) : '–']];
+  return `<div class="card"><h2>Ergebnis</h2><div class="kv">${kv.map(([l, v]) => `<div><span class="mute sm">${l}</span><b>${v}</b></div>`).join('')}</div></div>
+  <button class="main" onclick="trainAgain()">Nochmal</button>
+  <div class="seg"><button class="ghost" onclick="trainLeave();openTrain()">Meine Statistik</button><button class="ghost" onclick="TS=null;camLeave();unwake();nav('home')">Zum Start</button></div>`;
+}
+
+function trainTab(rows) {
+  const by = k => rows.filter(r => r.state.tr.kind === k).map(r => ({ s: r.state.tr, t: r.created_at, st: tstat(r.state.tr) }));
+  const fin = by('fin'), sc = by('sc'), fl = by('fld'), lg = by('leg');
+  const kvc = (title, kv, extra = '') => `<div class="card"><h2>${title}</h2><div class="kv">${kv.map(([l, v]) => `<div><span class="mute sm">${l}</span><b>${v}</b></div>`).join('')}</div>${extra}</div>`;
+  const sum = (a, f) => a.reduce((x, y) => x + f(y.st), 0);
+  let out = `<p class="mute">${rows.length} ${rows.length === 1 ? 'Einheit' : 'Einheiten'} im Training</p>`;
+  if (fin.length) {
+    const per = {}; fin.forEach(x => Object.entries(x.st.per).forEach(([r, [a, h]]) => { const p = per[r] ??= [0, 0]; p[0] += a; p[1] += h; }));
+    const A = sum(fin, t => t.att), O = sum(fin, t => t.ok), list = Object.entries(per).map(([r, [a, h]]) => ({ r: +r, a, h }));
+    const weak = list.filter(x => x.a >= 2).sort((a, b) => a.h / a.a - b.h / b.a || b.a - a.a).slice(0, 5).map(x => `${x.r} (${pc0(x.h, x.a)})`).join(', ');
+    const tbl = list.sort((a, b) => a.r - b.r).map(x => `<tr><td>${x.r}</td><td>${x.a}</td><td>${x.h}</td><td>${pc0(x.h, x.a)}</td></tr>`).join('');
+    const last = fin.slice(-6).map(x => pc0(x.st.ok, x.st.att)).join(', ');
+    out += kvc('Finishing', [['Versuche', A], ['Geschafft', O + ' (' + pc0(O, A) + ')'], ['Einheiten', fin.length], ['Letzte Einheiten', last]],
+      `<p><b>Schwächste Reste:</b> ${weak || 'Noch zu wenig Versuche'}</p><details><summary>Alle Reste</summary><div style="overflow-x:auto"><table><tr><th>Rest</th><th>Versuche</th><th>Geschafft</th><th>Quote</th></tr>${tbl}</table></div></details>`);
+  }
+  if (sc.length) {
+    const D = sum(sc, t => t.darts), P = sum(sc, t => t.pts), best = Math.max(...sc.map(x => x.st.avg));
+    const goals = sc.filter(x => x.s.o.goal), hit = goals.filter(x => x.st.avg >= x.s.o.goal).length;
+    const last = sc.slice(-5).reverse().map(x => `<div class="brow"><span>${dt(x.t)}</span><span style="text-align:right">Ø ${x.st.avg.toFixed(1)}${x.s.o.goal ? (x.st.avg >= x.s.o.goal ? ' ✓' : ' ✗') : ''} (${x.st.vis} Aufn.)</span></div>`).join('');
+    out += kvc('Scoring', [['Einheiten', sc.length], ['Average', D ? (P / D * 3).toFixed(1) : '–'], ['Bester Average', best.toFixed(1)], ['Ziel-Average erreicht', goals.length ? hit + ' von ' + goals.length : '–'], ['180er', sum(sc, t => t.h180)], ['140+', sum(sc, t => t.h140)], ['100+', sum(sc, t => t.h100)]], `<h2 style="margin-top:12px">Letzte Einheiten</h2>${last}`);
+  }
+  if (fl.length) {
+    const g = {}; fl.forEach(x => { const a = g[x.s.o.field] ??= { n: 0, d: 0, h: 0, b: 0 }; a.n++; a.d += x.st.darts; a.h += x.st.hits; a.b = Math.max(a.b, x.st.darts ? x.st.hits / x.st.darts : 0); });
+    const tbl = Object.entries(g).map(([f, a]) => `<tr><td>${f}</td><td>${a.n}</td><td>${a.h}/${a.d}</td><td>${pc0(a.h, a.d)}</td><td>${Math.round(a.b * 100)}%</td></tr>`).join('');
+    out += `<div class="card" style="overflow-x:auto"><h2>Zielfeld</h2><table><tr><th>Feld</th><th>Einheiten</th><th>Treffer</th><th>Quote</th><th>Beste</th></tr>${tbl}</table></div>`;
+  }
+  if (lg.length) {
+    const L = lg.flatMap(x => x.st.legs), D = sum(lg, t => t.darts), P = sum(lg, t => t.pts), ch = sum(lg, t => t.ch), co = sum(lg, t => t.co);
+    const b = {}; lg.forEach(x => { const k = x.s.cfg.start; (b[k] ??= []).push(...x.st.legs); });
+    out += kvc('Legs', [['Legs gewonnen', L.length], ['Ø Darts pro Leg', L.length ? (L.reduce((a, c) => a + c, 0) / L.length).toFixed(1) : '–'], ['Average', D ? (P / D * 3).toFixed(1) : '–'], ['Checkout-Quote', ch ? pc0(co, ch) + ' (' + co + '/' + ch + ')' : '–'],
+      ...Object.entries(b).map(([k, a]) => ['Bestes ' + k + '-Leg', a.length ? Math.min(...a) + ' Darts' : '–'])]);
+  }
+  const f = {}; let nd = 0;
+  rows.forEach(r => { const s = r.state.tr; if (s.kind !== 'fin') s.ev.forEach(e => { if (e[0]) { const k = tkey(e); f[k] = (f[k] || 0) + 1; nd++; } }); });
+  if (nd) out += `<div class="card"><h2>Trefferbild im Training</h2>${board(f)}<p class="mute sm">Alle Darts aus Scoring, Zielfeld und Legs.</p></div>`;
+  return out + `<button class="ghost" style="width:100%" onclick="trainReset()">Trainingsdaten ausblenden</button>`;
 }
 
 // ---------- Duelle und Verlauf ----------
@@ -523,7 +797,7 @@ function throwLog(c) {
   return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
 }
 
-function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : ''); }
+function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -592,6 +866,7 @@ async function save() {
   if (error) toast('Speichern fehlgeschlagen');
 }
 function dart(x) {
+  if (TS) return tdart(x);
   if (watch) return;
   if (S.vib && navigator.vibrate) navigator.vibrate(12);
   const st = match.st, c = calc(st.cfg, st.ev);
@@ -607,6 +882,7 @@ function dart(x) {
   render(); save();
 }
 function undo() {
+  if (TS) return tundo();
   if (watch) return;
   if (!match.st.ev.length) return toast('Nichts zum Zurücknehmen');
   match.st.ev.pop(); render(); save();
@@ -717,7 +993,7 @@ function toggleSet() { showSet = !showSet; render(); }
 function probe() { unlock(); speak([{ t: 'Einhundertachtzig!', k: ['n180'] }]); }
 async function wake() {
   try {
-    if (S.wake && match && navigator.wakeLock && !wl) {
+    if (S.wake && (match || TS) && navigator.wakeLock && !wl) {
       wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; });
     }
   } catch (e) {}
