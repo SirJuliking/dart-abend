@@ -292,36 +292,64 @@ function copyPc() {
   navigator.clipboard.writeText(t).then(() => toast('Spielercode kopiert'), () => toast(t));
 }
 
-// ---------- Ansage (Sprachausgabe im Browser, Deutsch) ----------
+// ---------- Ansage: echte Aufnahmen (sprache.wav + sprache.json), sonst Stimme des Geräts ----------
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-let heard = 0, voiceOn = lsGet('dv') !== '0';
+let heard = 0, voiceOn = lsGet('dv') !== '0', ac = null, pack = null, packTried = false, playing = [];
 const dl = l => l === 'Bull' ? 'Bull' : l === '25' ? 'fünfundzwanzig' : ({ S: 'Single ', D: 'Doppel ', T: 'Triple ' })[l[0]] + l.slice(1);
+const ck = l => l === 'Bull' ? ['bull'] : l === '25' ? ['n25'] : [{ S: 'single', D: 'doppel', T: 'triple' }[l[0]], 'n' + l.slice(1)];
 function phrases(cfg, ev, h) {
-  const out = [];
+  const out = [], say = (t, k) => out.push({ t, k });
   if (ev.length <= h) return out;
   const before = calc(cfg, ev.slice(0, -1)), after = calc(cfg, ev);
-  const t = before.turn, bp = before.P[t], ap = after.P[t];
+  const t = before.turn, bp = before.P[t], ap = after.P[t], pk = 'p' + (t + 1);
   if (ap.v.length > bp.v.length) {
     const v = ap.v.at(-1);
     if (v.win) {
-      if (after.winner !== null) out.push(`Spiel, Satz und Match, ${ap.name}`);
-      else if (ap.sets > bp.sets) out.push(`Satz für ${ap.name}`);
-      else out.push(`Leg für ${ap.name}`);
-    } else if (v.sum === 180) out.push('Einhundertachtzig!');
-    else if (v.sum >= 100) out.push(String(v.sum));
+      if (after.winner !== null) say(`Spiel, Satz und Match, ${ap.name}`, ['match', pk]);
+      else if (ap.sets > bp.sets) say(`Satz für ${ap.name}`, ['satz_fuer', pk]);
+      else say(`Leg für ${ap.name}`, ['leg_fuer', pk]);
+    } else if (v.sum === 180) say('Einhundertachtzig!', ['n180']);
+    else if (v.sum >= 100) say(String(v.sum), ['n' + v.sum]);
   }
   if (after.winner === null && !after.cur) {
     const q = after.P[after.turn], r = route(q.rem, 3, q.rule);
-    if (r) out.push(`${q.name}, ${q.rem} Rest: ${r.map(dl).join(', ')}`);
+    if (r) say(`${q.name}, ${q.rem} Rest: ${r.map(dl).join(', ')}`, ['p' + (after.turn + 1), ...r.flatMap(ck)]);
   }
   return out;
 }
+async function loadPack() {
+  if (packTried) return; packTried = true;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const [j, w] = await Promise.all([fetch('sprache.json'), fetch('sprache.wav')]);
+    if (!j.ok || !w.ok) return;
+    const idx = await j.json();
+    pack = { idx, buf: await ac.decodeAudioData(await w.arrayBuffer()) };
+  } catch (e) {}
+}
+function stopAll() {
+  playing.forEach(x => { try { x.stop(); } catch (e) {} }); playing = [];
+  if (window.speechSynthesis) speechSynthesis.cancel();
+}
 function speak(list) {
+  stopAll();
+  if (pack && list.every(x => x.k && x.k.every(c => pack.idx[c]))) {
+    if (ac.state === 'suspended') ac.resume();
+    let at = ac.currentTime + 0.05;
+    list.forEach(x => {
+      x.k.forEach(c => {
+        const g = pack.idx[c], src = ac.createBufferSource();
+        src.buffer = pack.buf; src.connect(ac.destination); src.start(at, g.s, g.e - g.s);
+        playing.push(src); at += g.e - g.s + 0.04;
+      });
+      at += 0.25;
+    });
+    return;
+  }
   if (!window.speechSynthesis) return;
-  speechSynthesis.cancel();
   const v = speechSynthesis.getVoices().find(x => x.lang.startsWith('de'));
-  list.forEach(t => { const u = new SpeechSynthesisUtterance(t); u.lang = 'de-DE'; if (v) u.voice = v; speechSynthesis.speak(u); });
+  list.forEach(x => { const u = new SpeechSynthesisUtterance(x.t); u.lang = 'de-DE'; if (v) u.voice = v; speechSynthesis.speak(u); });
 }
 function hear() {
   const st = match.st, n = st.ev.length;
@@ -331,11 +359,14 @@ function hear() {
 }
 function toggleVoice() {
   voiceOn = !voiceOn; lsSet('dv', voiceOn ? '1' : '0');
-  if (!voiceOn && window.speechSynthesis) speechSynthesis.cancel();
+  if (!voiceOn) stopAll();
+  toast(voiceOn ? (pack ? 'Ansage an (deine Aufnahmen)' : 'Ansage an (Gerätestimme)') : 'Ansage aus');
   render();
 }
-// Browser erlauben Sprache erst nach der ersten Berührung
+// Browser erlauben Ton erst nach der ersten Berührung
 addEventListener('pointerdown', () => {
+  try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) {}
+  loadPack();
   if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
 }, { once: true });
 
