@@ -44,8 +44,7 @@ const items = [
 // Zusatz-Modus (aufnehmen.html?zusatz): nur die neuen Ansagen, ergibt sprache2.wav und sprache2.json
 const ZUSATZ = location.search.includes('zusatz');
 if (ZUSATZ) {
-  const NEU = [{ k: 'darts', say: 'Darts' }, { k: 'bust', say: 'Bust' },
-    ...Array.from({ length: 40 }, (_, i) => 21 + i).filter(n => n !== 25).map(n => ({ k: 'n' + n, num: n, say: W(n) }))];
+  const NEU = [{ k: 'dart1', say: 'mit dem ersten Dart' }, { k: 'dart2', say: 'mit dem zweiten Dart' }, { k: 'dart3', say: 'mit dem dritten Dart' }, { k: 'bust', say: 'Bust' }];
   items.length = 0; items.push(...NEU);
 }
 const SUF = ZUSATZ ? '2' : '';

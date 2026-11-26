@@ -940,13 +940,12 @@ function phrases(cfg, ev, h) {
     const v = ap.v.at(-1);
     if (v.win) {
       if (S.awin) {
-        if (after.winner !== null) say(`Spiel, Satz und Match, ${ap.name}`, ['match', pk]);
-        else if (ap.sets > bp.sets) say(`Satz für ${ap.name}`, ['satz_fuer', pk]);
-        else {
-          const n = ap.v.filter(q => q.leg === v.leg).reduce((a, q) => a + q.d.length, 0), pi = pack && pack.idx;
-          const withN = pi && pi.darts && pi['n' + n];
-          say(`Leg für ${ap.name}, in ${n} Darts`, withN ? ['leg_fuer', pk, 'n' + n, 'darts'] : ['leg_fuer', pk]);
-        }
+        // Mit welchem Dart der Aufnahme das Leg beendet wurde (nur, wenn die Aufnahme dafür im Paket ist)
+        const n = v.d.length, wd = ['ersten', 'zweiten', 'dritten'][n - 1], ck2 = pack && pack.idx['dart' + n] ? ['dart' + n] : [];
+        const tail = wd ? `, mit dem ${wd} Dart` : '';
+        if (after.winner !== null) say(`Spiel, Satz und Match, ${ap.name}${tail}`, ['match', pk, ...ck2]);
+        else if (ap.sets > bp.sets) say(`Satz für ${ap.name}${tail}`, ['satz_fuer', pk, ...ck2]);
+        else say(`Leg für ${ap.name}${tail}`, ['leg_fuer', pk, ...ck2]);
       }
     } else if (v.bust) {
       if (S.abust && !(pack && S.voice === 'auto' && !pack.idx.bust)) say('Bust', ['bust']);
@@ -1039,7 +1038,7 @@ function setPanel() {
   <h3>Ton</h3>${cb('on', 'Ton und Ansage')}
   <div class="srow"><span>Lautstärke</span><input type="range" min="0" max="100" value="${S.vol}" oninput="volSet(this.value)" aria-label="Lautstärke"></div>
   <div class="srow"><span>Stimme</span><select onchange="setS('voice', this.value)">${op('voice', 'auto', 'Meine Aufnahmen')}${op('voice', 'device', 'Gerätestimme')}</select></div>
-  <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn (Leg mit Anzahl Darts)')}${cb('abust', 'Bust')}
+  <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn (mit dem wievielten Dart)')}${cb('abust', 'Bust')}
   <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button><p class="mute sm">${audioStatus()}</p>
   <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
   <h3>Clips</h3>${cb('clip', 'Clip-Aufnahme (Highlights speichern)')}
