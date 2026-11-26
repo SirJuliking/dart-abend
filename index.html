@@ -658,7 +658,7 @@ function stopAll() {
 function speak(list) {
   stopAll();
   if (S.voice === 'auto' && pack && list.every(x => x.k && x.k.every(c => pack.idx[c]))) {
-    if (ac.state === 'suspended') ac.resume();
+    if (ac.state !== 'running') ac.resume();
     gain.gain.value = S.vol / 100;
     let at = ac.currentTime + 0.05;
     list.forEach(x => {
@@ -690,7 +690,7 @@ function toggleVoice() {
 function setS(k, v) { S[k] = v; saveS(); if (k === 'wake') (v ? wake() : unwake()); if (k === 'on' && !v) stopAll(); render(); }
 function volSet(v) { S.vol = +v; saveS(); }
 function toggleSet() { showSet = !showSet; render(); }
-function probe() { speak([{ t: 'Einhundertachtzig!', k: ['n180'] }]); }
+function probe() { unlock(); speak([{ t: 'Einhundertachtzig!', k: ['n180'] }]); }
 async function wake() {
   try {
     if (S.wake && match && navigator.wakeLock && !wl) {
@@ -709,7 +709,7 @@ function setPanel() {
   <div class="srow"><span>Lautstärke</span><input type="range" min="0" max="100" value="${S.vol}" oninput="volSet(this.value)" aria-label="Lautstärke"></div>
   <div class="srow"><span>Stimme</span><select onchange="setS('voice', this.value)">${op('voice', 'auto', 'Meine Aufnahmen')}${op('voice', 'device', 'Gerätestimme')}</select></div>
   <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn')}
-  <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button>
+  <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button><p class="mute sm">${audioStatus()}</p>
   <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
   <h3>Gerät</h3>${cb('vib', 'Vibration beim Eintragen (nur Android)')}
   <div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>
@@ -724,12 +724,25 @@ function installApp() {
   toast(/iphone|ipad|ipod/i.test(navigator.userAgent) ? 'Safari: Teilen, dann Zum Home-Bildschirm' : 'Browser-Menü: App installieren');
 }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-// Browser erlauben Ton erst nach der ersten Berührung
-addEventListener('pointerdown', () => {
-  try { getAc().resume(); } catch (e) {}
+// iPhone und iPad schalten Ton erst nach Tippen frei (und nur bei Klick oder Touch-Ende, nicht beim Touch-Beginn)
+let unlocked = false, silentEl = null;
+function unlock() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+  try {
+    const a = getAc(); if (a.state !== 'running') a.resume();
+    const s0 = a.createBufferSource(); s0.buffer = a.createBuffer(1, 1, 22050); s0.connect(a.destination); s0.start(0);
+  } catch (e) {}
+  try {
+    // Stiller Ton über ein Audio-Element: hebt auf dem iPhone/iPad die Sperre durch den Stumm-Schalter für Web-Audio auf
+    if (!silentEl) { silentEl = new Audio('data:audio/wav;base64,UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'); silentEl.loop = true; silentEl.setAttribute('playsinline', ''); }
+    silentEl.play().catch(() => {});
+  } catch (e) {}
   loadPack();
-  if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
-}, { once: true });
+  if (!unlocked && window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
+  if (ac && ac.state === 'running') unlocked = true;
+}
+['touchend', 'click', 'keydown'].forEach(ev => addEventListener(ev, () => { if (!unlocked) unlock(); }, { passive: true }));
+const audioStatus = () => 'Status: ' + (pack ? 'Aufnahmen geladen' : packTried ? 'Aufnahmen nicht gefunden, Gerätestimme' : 'noch nicht gestartet, einmal tippen') + ', Ton ' + (ac && ac.state === 'running' ? 'bereit' : 'noch gesperrt');
 
 // ---------- Kamera (WebRTC, jeder sieht jeden) ----------
 let ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }, ...(CFG.TURN || [])] };
