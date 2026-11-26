@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Dart-Abend</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14282A">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dart-Abend">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Karla:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
@@ -67,6 +74,16 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 td.bst{color:var(--green);font-weight:700}
 .et th:nth-child(n+2),.et td:nth-child(n+2){text-align:right}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kv div{background:var(--bg);border-radius:10px;padding:8px 10px}
+.kv b{display:block;font-family:Oswald,sans-serif;font-size:1.3rem;font-weight:700}
+.lnk{background:none;border:0;color:var(--chalk);padding:0;font:inherit;text-decoration:underline;cursor:pointer;text-align:left}
+.hrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.stack{display:flex;height:24px;border-radius:6px;overflow:hidden;margin:6px 0}.stack i{display:block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.chip{padding:6px 12px;border-radius:999px;font-size:.9rem}
+.chip.on{background:var(--chalk);color:var(--bg);font-weight:700}
+.brow{display:grid;grid-template-columns:62px 1fr 74px;gap:8px;align-items:center;margin:5px 0;font-size:.9rem}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chalk);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;z-index:9}
 </style>
 </head>
@@ -129,6 +146,7 @@ function home() {
   return `<div class="wrap"><h1>Dart-Abend</h1><p class="mute">Spielstand live auf allen Geräten.</p>
   <div class="card"><h2>Neues Match</h2>
   ${names.map((n, i) => `<div class="prow"><input class="in" placeholder="Spieler ${i+1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')}
+  ${chips()}
   ${names.length < 4 ? '<button class="ghost" onclick="addP()">Spieler hinzufügen</button>' : ''}
   <div class="seg"><button class="${start===501?'on':''}" onclick="start=501;render()">501</button><button class="${start===301?'on':''}" onclick="start=301;render()">301</button></div>
   <div class="seg"><select class="in" onchange="legsW=+this.value">${opt([1,2,3,4,5], legsW, n => n + (n > 1 ? ' Legs' : ' Leg') + ' pro Satz')}</select>
@@ -181,7 +199,7 @@ function agg(rows) {
   for (const r of rows) {
     if (!r.state.cfg) continue;
     gi++;
-    const c = calc(r.state.cfg, r.state.ev);
+    const c = r.c ??= calc(r.state.cfg, r.state.ev);
     c.P.forEach((p, i) => {
       const k = p.name.trim().toLowerCase();
       const s = A[k] ??= { n: p.name.trim(), g: 0, w: 0, pts: 0, dr: 0, f9: 0, f9d: 0, h180: 0, h140: 0, hf: 0, ch: 0, co: 0, av: [] };
@@ -235,16 +253,74 @@ function endView(c) {
   <div class="num" style="font-size:2.8rem">${cfg.sets > 1 ? c.P.map(p => p.sets).join(' : ') : legs}</div>
   <div class="mute sm">${cfg.sets > 1 ? 'Sätze, Legs insgesamt ' + legs : 'Legs'}</div>
   <div style="overflow-x:auto;margin-top:12px"><table class="et"><tr><th></th>${c.P.map(p => `<th style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</th>`).join('')}</tr>${tr}</table></div>
+  ${throwLog(c)}
   ${watch ? '' : '<button class="main" onclick="rematch()">Revanche</button><button class="ghost" style="width:100%;margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button>'}
   <button class="ghost" style="width:100%;margin-top:8px" onclick="showStats()">Zum Ranking</button></div>`;
 }
 
-// ---------- Ranking ----------
+// ---------- Daten laden, ausblenden ----------
 const PAL = ['#3DAA74', '#E4483D', '#F2C14E', '#5AA9E6', '#B08BDB', '#F28C4E', '#4FD1C5', '#E879A6'];
-let SC = null, sk = 'q', sd = -1;
+let HID = { hp: [], hm: [] }, ROWS = [], VIS = [], SC = null, known = [], edit = false, pk = '', duelA = '', duelB = '', histF = '', RK = [];
+const colorOf = n => PAL[SC.list.map(s => s.n.toLowerCase()).sort().indexOf(n.toLowerCase()) % PAL.length];
 const pc0 = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
+const dt = x => { const d = new Date(x); return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); };
+async function loadHid() {
+  const { data } = await db.from('matches').select('state').eq('id', '_CONFIG').maybeSingle();
+  if (data && data.state) HID = { hp: data.state.hp || [], hm: data.state.hm || [] };
+}
+async function saveHid() {
+  const { error } = await db.from('matches').upsert({ id: '_CONFIG', state: HID, finished: false });
+  if (error) toast('Speichern fehlgeschlagen');
+}
+async function loadKnown() {
+  await loadHid();
+  let { data, error } = await db.from('matches').select('cfg:state->cfg').neq('id', '_CONFIG').order('created_at', { ascending: false }).limit(300);
+  if (error) { const r = await db.from('matches').select('state').neq('id', '_CONFIG').limit(300); data = (r.data || []).map(x => ({ cfg: x.state.cfg })); }
+  const cnt = {};
+  (data || []).forEach(x => x.cfg && x.cfg.players && x.cfg.players.forEach(n => { const k = n.trim(); cnt[k] = (cnt[k] || 0) + 1; }));
+  const old = JSON.stringify(known);
+  known = Object.keys(cnt).filter(n => !HID.hp.includes(n.toLowerCase())).sort((a, b) => cnt[b] - cnt[a]).slice(0, 14);
+  if (!match && view === 'home' && old !== JSON.stringify(known) && document.activeElement.tagName !== 'INPUT') render();
+}
+function chips() {
+  if (!known.length) return '';
+  const sel = names.map(x => x.trim().toLowerCase());
+  return `<div class="mute sm">Spieler antippen:</div><div class="chips">${known.map((n, i) => `<button class="chip ${sel.includes(n.toLowerCase()) ? 'on' : ''}" onclick="pick(${i})">${esc(n)}</button>`).join('')}</div>`;
+}
+function pick(i) {
+  const n = known[i], j = names.findIndex(x => x.trim().toLowerCase() === n.toLowerCase());
+  if (j >= 0) names[j] = '';
+  else {
+    const e = names.findIndex(x => !x.trim());
+    if (e >= 0) names[e] = n; else if (names.length < 4) { names.push(n); outs.push('double'); } else return toast('Maximal 4 Spieler');
+  }
+  render();
+}
+function recompute() { VIS = ROWS.filter(r => r.state.cfg && !HID.hm.includes(r.id)); SC = agg(VIS); }
+function nav(v) { view = v; render(); scrollTo(0, 0); }
+async function showStats() {
+  const [r] = await Promise.all([db.from('matches').select('id,created_at,state').eq('finished', true).order('created_at'), loadHid()]);
+  if (r.error) return toast('Statistiken konnten nicht geladen werden');
+  ROWS = r.data; recompute(); leave(true); edit = false; nav('stats');
+}
+function hidePlayer(k) {
+  const n = SC.list.find(s => s.n.toLowerCase() === k).n;
+  if (!HID.hp.includes(k)) HID.hp.push(k);
+  if (confirm(`${n} ist jetzt im Ranking ausgeblendet.\nSollen auch alle Matches mit ${n} aus den Statistiken der anderen herausgerechnet werden?`))
+    VIS.forEach(r => { if (r.state.cfg.players.some(x => x.trim().toLowerCase() === k) && !HID.hm.includes(r.id)) HID.hm.push(r.id); });
+  recompute(); saveHid(); render();
+}
+function showPlayerAt(i) { HID.hp.splice(i, 1); recompute(); saveHid(); render(); }
+function toggleMatch(id) { const i = HID.hm.indexOf(id); if (i < 0) HID.hm.push(id); else HID.hm.splice(i, 1); recompute(); saveHid(); render(); }
+function openPlayer(n) { pk = n.toLowerCase(); nav('player'); }
+function openDuel(a, b) { duelA = a; duelB = b; nav('duel'); }
+function openHist(f) { histF = f || ''; nav('hist'); }
+function backTo(v) { nav(v); }
+
+// ---------- Ranking ----------
+let sk = 'q', sd = -1;
 const COLS = [
-  ['n', 'Spieler', s => s.n.toLowerCase(), s => esc(s.n)],
+  ['n', 'Spieler', s => s.n.toLowerCase(), null],
   ['g', 'Spiele', s => s.g, s => s.g],
   ['w', 'Siege', s => s.w, s => s.w],
   ['q', 'Quote', s => s.g ? s.w / s.g : 0, s => pc0(s.w, s.g)],
@@ -270,26 +346,146 @@ function chart(list, total, color) {
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Average-Verlauf der Spieler">${grid}${lines}<text x="${L}" y="${H - 6}" font-size="10" fill="var(--mute)">älter</text><text x="${W - R}" y="${H - 6}" font-size="10" text-anchor="end" fill="var(--mute)">neuestes Match</text></svg>`;
 }
 function statsView() {
-  const { list, total } = SC, g = COLS.find(c => c[0] === sk)[2];
-  const rows = [...list].sort((a, b) => (g(a) > g(b) ? 1 : g(a) < g(b) ? -1 : 0) * sd || (b.w / b.g - a.w / a.g));
-  const names = list.map(s => s.n.toLowerCase()).sort(), color = s => PAL[names.indexOf(s.n.toLowerCase()) % PAL.length];
+  const list = SC.list.filter(s => !HID.hp.includes(s.n.toLowerCase())), g = COLS.find(c => c[0] === sk)[2];
+  RK = [...list].sort((a, b) => (g(a) > g(b) ? 1 : g(a) < g(b) ? -1 : 0) * sd || (b.w / b.g - a.w / a.g));
   const avg = s => s.dr ? s.pts / s.dr * 3 : 0, mx = Math.max(1, ...list.map(avg));
   const head = COLS.map(c => `<th><button class="th ${sk === c[0] ? 'on' : ''}" onclick="setSort('${c[0]}')">${c[1]}${sk === c[0] ? (sd < 0 ? ' ▼' : ' ▲') : ''}</button></th>`).join('');
-  const body = rows.map((s, i) => `<tr><td>${i + 1}</td>${COLS.map((c, j) => `<td>${j === 0 ? `<span class="dot" style="background:${color(s)}"></span>` : ''}${c[3](s)}</td>`).join('')}</tr>`).join('');
-  return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Ranking</h1>
-  <div class="card" style="overflow-x:auto"><table><tr><th>#</th>${head}</tr>${body || '<tr><td colspan="11" class="mute">Noch keine beendeten Matches.</td></tr>'}</table></div>
-  <p class="mute sm">Tippe auf eine Spaltenüberschrift, um zu sortieren.</p>
-  <div class="card"><h2>Average-Verlauf</h2>${chart(list, total, color)}
-  <div style="margin-top:10px">${[...list].sort((a, b) => avg(b) - avg(a)).map(s => `<div class="crow"><span class="nm"><span class="dot" style="background:${color(s)}"></span>${esc(s.n)}</span><div class="bar"><i style="width:${avg(s) / mx * 100}%;background:${color(s)}"></i></div><span>${avg(s).toFixed(1)}</span></div>`).join('')}</div>
+  const body = RK.map((s, i) => `<tr><td>${i + 1}</td>${COLS.map((c, j) => `<td>${j === 0 ? `<span class="dot" style="background:${colorOf(s.n)}"></span><button class="lnk" onclick="openPlayer(RK[${i}].n)">${esc(s.n)}</button>` : c[3](s)}</td>`).join('')}${edit ? `<td><button class="ghost" style="padding:2px 8px" onclick="hidePlayer(RK[${i}].n.toLowerCase())" aria-label="Spieler ausblenden">✕</button></td>` : ''}</tr>`).join('');
+  const hid = edit && HID.hp.length ? `<div class="card"><h2>Ausgeblendete Spieler</h2>${HID.hp.map((k, i) => `<button class="ghost" style="margin:0 6px 6px 0" onclick="showPlayerAt(${i})">${esc(k)} zurückholen</button>`).join('')}</div>` : '';
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button><span><button class="ghost" onclick="openHist()">Verlauf</button> <button class="ghost" onclick="edit=!edit;render()">${edit ? 'Fertig' : 'Bearbeiten'}</button> <button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></span></div><h1>Ranking</h1>
+  <div class="card" style="overflow-x:auto"><table><tr><th>#</th>${head}${edit ? '<th></th>' : ''}</tr>${body || '<tr><td colspan="11" class="mute">Noch keine beendeten Matches.</td></tr>'}</table></div>
+  <p class="mute sm">Tippe auf einen Spieler für sein Profil, auf eine Spaltenüberschrift zum Sortieren.</p>${hid}
+  <div class="card"><h2>Average-Verlauf</h2>${chart(list, SC.total, s => colorOf(s.n))}
+  <div style="margin-top:10px">${[...list].sort((a, b) => avg(b) - avg(a)).map(s => `<div class="crow"><span class="nm"><span class="dot" style="background:${colorOf(s.n)}"></span>${esc(s.n)}</span><div class="bar"><i style="width:${avg(s) / mx * 100}%;background:${colorOf(s.n)}"></i></div><span>${avg(s).toFixed(1)}</span></div>`).join('')}</div>
   <p class="mute sm">Ø = Punkte pro 3 Darts. Der Verlauf zeigt die letzten 20 Matches. Gezählt werden nur beendete Matches.</p></div></div>`;
 }
-async function showStats() {
-  const { data, error } = await db.from('matches').select('state').eq('finished', true).order('created_at');
-  if (error) return toast('Statistiken konnten nicht geladen werden');
-  SC = agg(data); leave(true); view = 'stats'; render();
+
+// ---------- Spielerprofil ----------
+function profile(k) {
+  const o = { n: '', g: 0, w: 0, lp: 0, lw: 0, pts: 0, dr: 0, f9: 0, f9d: 0, vis: 0, bust: 0, hi: 0, hf: 0, ch: 0, co: 0, best: 0, wld: 0, b: Array(8).fill(0), m: [0, 0, 0, 0], f: {}, att: {}, da: 0, dh: 0, h100: 0, h140: 0, h180: 0, av: [], rows: [] };
+  let gi = 0;
+  for (const r of VIS) {
+    gi++;
+    const c = r.c ??= calc(r.state.cfg, r.state.ev), i = c.P.findIndex(p => p.name.trim().toLowerCase() === k);
+    if (i < 0) continue;
+    const p = c.P[i]; o.n = p.name.trim(); o.g++; if (c.winner === i) o.w++; o.rows.push(r);
+    o.lp += Math.max(...c.P.flatMap(q => q.v.map(v => v.leg))) + 1;
+    let pts = 0, dr = 0; const seen = {}, ld = {};
+    for (const v of p.v) {
+      o.vis++; pts += v.sum; dr += v.d.length; ld[v.leg] = (ld[v.leg] || 0) + v.d.length;
+      if (v.bust) o.bust++;
+      o.hi = Math.max(o.hi, v.sum);
+      o.b[v.sum === 180 ? 7 : v.sum >= 140 ? 6 : v.sum >= 100 ? 5 : v.sum >= 80 ? 4 : v.sum >= 60 ? 3 : v.sum >= 40 ? 2 : v.sum >= 20 ? 1 : 0]++;
+      if (v.sum === 180) o.h180++; else if (v.sum >= 140) o.h140++; else if (v.sum >= 100) o.h100++;
+      seen[v.leg] = (seen[v.leg] || 0) + 1; if (seen[v.leg] <= 3) { o.f9 += v.sum; o.f9d += v.d.length; }
+      if (route(v.before, 3, p.rule)) o.ch++;
+      let rem = v.before;
+      v.d.forEach(([m, x], j) => {
+        o.m[m]++;
+        if (m) { const f = m === 2 && x === 25 ? 'Bull' : 'SDT'[m - 1] + x; o.f[f] = (o.f[f] || 0) + 1; }
+        if (p.rule !== 'single' && ((rem % 2 === 0 && rem >= 2 && rem <= 40) || rem === 50)) {
+          const a = o.att[rem] ??= [0, 0]; a[0]++; o.da++;
+          if (v.win && j === v.d.length - 1) { a[1]++; o.dh++; }
+        }
+        rem -= m * x;
+      });
+      if (v.win) { o.co++; o.lw++; o.hf = Math.max(o.hf, v.sum); o.best = o.best ? Math.min(o.best, ld[v.leg]) : ld[v.leg]; o.wld += ld[v.leg]; }
+    }
+    o.pts += pts; o.dr += dr; o.av.push([gi, dr ? pts / dr * 3 : 0]);
+  }
+  return o;
+}
+const ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+function board(f) {
+  const C = 170, ang = d => d * Math.PI / 180;
+  const pt = (r, a) => (C + r * Math.sin(ang(a))).toFixed(1) + ' ' + (C - r * Math.cos(ang(a))).toFixed(1);
+  const arc = (r0, r1, a0, a1) => `M${pt(r1, a0)}A${r1} ${r1} 0 0 1 ${pt(r1, a1)}L${pt(r0, a1)}A${r0} ${r0} 0 0 0 ${pt(r0, a0)}Z`;
+  const mx = { S: 1, D: 1, T: 1 };
+  Object.entries(f).forEach(([k, v]) => { const t = k[0]; if (mx[t] !== undefined) mx[t] = Math.max(mx[t], v); });
+  const col = (k, t) => f[k] ? `rgba(242,193,78,${(0.18 + 0.82 * Math.sqrt(f[k] / (t || mx[k[0]]))).toFixed(2)})` : 'var(--bg)';
+  let out = '';
+  ORDER.forEach((n, i) => {
+    const a0 = i * 18 - 9, a1 = a0 + 18, s = col('S' + n), d = col('D' + n), t = col('T' + n);
+    const h = k => `<title>${k}: ${f[k] || 0} Treffer</title>`;
+    out += `<path d="${arc(142.9, 150, a0, a1)}" fill="${d}" stroke="var(--line)">${h('D' + n)}</path><path d="${arc(94.4, 142.9, a0, a1)}" fill="${s}" stroke="var(--line)">${h('S' + n)}</path><path d="${arc(87.4, 94.4, a0, a1)}" fill="${t}" stroke="var(--line)">${h('T' + n)}</path><path d="${arc(14, 87.4, a0, a1)}" fill="${s}" stroke="var(--line)">${h('S' + n)}</path>`;
+    const [lx, ly] = pt(161, i * 18).split(' ');
+    out += `<text x="${lx}" y="${+ly + 4}" text-anchor="middle" font-size="12" fill="var(--mute)">${n}</text>`;
+  });
+  out += `<circle cx="${C}" cy="${C}" r="14" fill="${col('S25', mx.S)}" stroke="var(--line)"><title>25: ${f.S25 || 0} Treffer</title></circle><circle cx="${C}" cy="${C}" r="5.6" fill="${f.Bull ? `rgba(242,193,78,${(0.18 + 0.82 * Math.sqrt(f.Bull / Math.max(1, f.Bull, mx.D))).toFixed(2)})` : 'var(--bg)'}" stroke="var(--line)"><title>Bull: ${f.Bull || 0} Treffer</title></circle>`;
+  return `<svg viewBox="0 0 340 340" width="100%" style="max-width:340px;display:block;margin:0 auto" role="img" aria-label="Trefferverteilung auf der Dartscheibe">${out}</svg>`;
+}
+function playerView() {
+  const o = profile(pk), back = `<div class="top"><button class="ghost" onclick="backTo('stats')">‹ Ranking</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div>`;
+  if (!o.g) return `<div class="wrap">${back}<p class="mute">Für diesen Spieler gibt es keine Daten.</p></div>`;
+  const col = colorOf(o.n), tot = o.m.reduce((a, b) => a + b, 0) || 1, pr = x => Math.round(x / tot * 100);
+  const kv = [['Average', o.dr ? (o.pts / o.dr * 3).toFixed(1) : '–'], ['First 9', o.f9d ? (o.f9 / o.f9d * 3).toFixed(1) : '–'], ['Ø pro Dart', o.dr ? (o.pts / o.dr).toFixed(1) : '–'],
+    ['Höchste Aufnahme', o.hi], ['Höchstes Finish', o.hf || '–'], ['180er', o.h180], ['140+', o.h140], ['100+', o.h100],
+    ['Checkout-Quote', o.ch ? pc0(o.co, o.ch) + ' (' + o.co + '/' + o.ch + ')' : '–'], ['Doppelquote', o.da ? pc0(o.dh, o.da) + ' (' + o.dh + '/' + o.da + ')' : '–'],
+    ['Leg-Quote', pc0(o.lw, o.lp)], ['Ø Darts pro Leg-Sieg', o.lw ? (o.wld / o.lw).toFixed(1) : '–'], ['Schnellstes Leg', o.best ? o.best + ' Darts' : '–'], ['Bust-Quote', pc0(o.bust, o.vis)]];
+  const lab = ['0–19', '20–39', '40–59', '60–79', '80–99', '100–139', '140–179', '180'], bm = Math.max(1, ...o.b);
+  const buckets = o.b.map((n, i) => `<div class="brow"><span>${lab[i]}</span><div class="bar"><i style="width:${n / bm * 100}%;background:${col}"></i></div><span>${n} (${pc0(n, o.vis)})</span></div>`).join('');
+  const top = Object.entries(o.f).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k === 'S25' ? '25' : k} (${v})`).join(', ');
+  const dbl = Object.entries(o.att).sort((a, b) => b[1][0] - a[1][0]).slice(0, 4).map(([r, [a, h]]) => `<div class="brow"><span>${r == 50 ? 'Bull' : 'D' + r / 2}</span><div class="bar"><i style="width:${h / a * 100}%;background:${col}"></i></div><span>${h}/${a}</span></div>`).join('');
+  const opps = [...new Set(o.rows.flatMap(r => r.state.cfg.players.map(x => x.trim()).filter(x => x.toLowerCase() !== pk)))].map(n => ({ n, d: duel(pk, n.toLowerCase()) })).sort((a, b) => b.d.rows.length - a.d.rows.length);
+  const duels = opps.map(({ n, d }) => `<tr><td><button class="lnk" onclick="openDuel('${pk.replace(/'/g, "\\'")}', '${n.toLowerCase().replace(/'/g, "\\'")}')">${esc(n)}</button></td><td>${d.rows.length}</td><td>${d.A ? d.A.w : 0} : ${d.B ? d.B.w : 0}</td><td>${d.A && d.A.dr ? (d.A.pts / d.A.dr * 3).toFixed(1) : '–'} : ${d.B && d.B.dr ? (d.B.pts / d.B.dr * 3).toFixed(1) : '–'}</td></tr>`).join('');
+  return `<div class="wrap">${back}<h1><span class="dot" style="background:${col}"></span>${esc(o.n)}</h1>
+  <p class="mute">${o.g} ${o.g === 1 ? 'Spiel' : 'Spiele'}, ${o.w} ${o.w === 1 ? 'Sieg' : 'Siege'} (${pc0(o.w, o.g)})</p>
+  <div class="card"><h2>Kennzahlen</h2><div class="kv">${kv.map(([l, v]) => `<div><span class="mute sm">${l}</span><b>${v}</b></div>`).join('')}</div></div>
+  <div class="card"><h2>Wurfprofil</h2>
+  <div class="stack" role="img" aria-label="Verteilung der Darts"><i style="width:${pr(o.m[0])}%;background:#4a6366"></i><i style="width:${pr(o.m[1])}%;background:var(--chalk)"></i><i style="width:${pr(o.m[2])}%;background:var(--red)"></i><i style="width:${pr(o.m[3])}%;background:var(--green)"></i></div>
+  <p class="mute sm">Daneben ${pr(o.m[0])}%, Single ${pr(o.m[1])}%, Double ${pr(o.m[2])}%, Triple ${pr(o.m[3])}%</p>
+  ${board(o.f)}<p class="mute sm">Je heller ein Feld, desto öfter getroffen. Single, Double und Triple sind getrennt skaliert. Beim Single zählt die Eingabe nicht, ob innen oder außen.</p>
+  <p><b>Meistgetroffen:</b> ${top || '–'}</p></div>
+  <div class="card"><h2>Aufnahmen</h2>${buckets}<p class="mute sm">Summe pro Aufnahme (3 Darts). Bust zählt als 0.</p></div>
+  <div class="card"><h2>Doppel</h2>${dbl || '<p class="mute">Noch keine Doppelversuche.</p>'}<p class="mute sm">Gezählt werden Darts, wenn der Rest ein Doppel (2 bis 40 oder Bull) war. Treffer = Checkout.</p></div>
+  <div class="card"><h2>Average-Verlauf</h2>${chart([{ n: o.n, av: o.av }], VIS.length, () => col)}</div>
+  <div class="card" style="overflow-x:auto"><h2>Duelle</h2><table><tr><th>Gegner</th><th>Spiele</th><th>Siege</th><th>Ø</th></tr>${duels || '<tr><td colspan="4" class="mute">Noch keine Duelle.</td></tr>'}</table><p class="mute sm">Siege und Average: du zuerst, dann der Gegner.</p></div>
+  <div class="card"><h2>Letzte Matches</h2>${[...o.rows].reverse().slice(0, 5).map(matchRow).join('')}<button class="ghost" style="width:100%;margin-top:8px" onclick="openHist(pk)">Alle Matches</button></div></div>`;
 }
 
-function render() { if (match) hear(); $('#app').innerHTML = (match ? matchView() : view === 'stats' ? statsView() : home()) + (showSet ? setPanel() : ''); }
+// ---------- Duelle und Verlauf ----------
+function duel(a, b) {
+  const rows = VIS.filter(r => { const ks = r.state.cfg.players.map(x => x.trim().toLowerCase()); return ks.includes(a) && ks.includes(b); });
+  const L = agg(rows).list;
+  return { rows, A: L.find(s => s.n.toLowerCase() === a), B: L.find(s => s.n.toLowerCase() === b) };
+}
+function matchRow(r, ed) {
+  const c = r.c ??= calc(r.state.cfg, r.state.ev), hid = HID.hm.includes(r.id);
+  const sc = r.state.cfg.sets > 1 ? c.P.map(p => p.sets).join(' : ') : c.P.map(p => p.v.filter(v => v.win).length).join(' : ');
+  return `<div class="hrow" style="${hid ? 'opacity:.5' : ''}" onclick="openMatch('${r.id}')"><div><b>${esc(c.winner !== null ? c.P[c.winner].name : '–')}</b> gewinnt, ${sc}<div class="mute sm">${c.P.map(p => esc(p.name)).join(' gegen ')}</div></div>
+  <div class="mute sm" style="text-align:right">${dt(r.created_at)}${ed ? `<br><button class="ghost" style="padding:2px 8px;margin-top:4px" onclick="event.stopPropagation();toggleMatch('${r.id}')">${hid ? 'zurückholen' : 'ausblenden'}</button>` : ''}</div></div>`;
+}
+function histView() {
+  const rows = ROWS.filter(r => r.state.cfg && (edit || !HID.hm.includes(r.id)) && (!histF || r.state.cfg.players.some(x => x.trim().toLowerCase() === histF))).reverse();
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="backTo('${histF ? 'player' : 'stats'}')">‹ Zurück</button><span><button class="ghost" onclick="edit=!edit;render()">${edit ? 'Fertig' : 'Bearbeiten'}</button> <button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></span></div>
+  <h1>Verlauf</h1><p class="mute">${histF ? 'Matches von ' + esc(histF) + '. ' : ''}Tippe auf ein Match für Ergebnis, Statistik und alle Würfe.</p>
+  <div class="card">${rows.map(r => matchRow(r, edit)).join('') || '<p class="mute">Keine Matches.</p>'}</div></div>`;
+}
+function duelView() {
+  const names = SC.list.map(s => s.n), a = duelA, b = duelB, d = duel(a, b);
+  const opt = (sel) => names.map(n => `<option value="${esc(n.toLowerCase())}" ${n.toLowerCase() === sel ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  const A = d.A, B = d.B, cA = colorOf(A ? A.n : a), cB = colorOf(B ? B.n : b);
+  const rows = [['Average', s => s.dr ? s.pts / s.dr * 3 : 0, s => s.dr ? (s.pts / s.dr * 3).toFixed(1) : '–'], ['First 9', s => s.f9d ? s.f9 / s.f9d : 0, s => s.f9d ? (s.f9 / s.f9d * 3).toFixed(1) : '–'],
+    ['180er', s => s.h180, s => s.h180], ['140+', s => s.h140, s => s.h140], ['Höchstes Finish', s => s.hf, s => s.hf || '–'], ['Checkout-Quote', s => s.ch ? s.co / s.ch : 0, s => pc0(s.co, s.ch)]];
+  const tr = A && B ? rows.map(([l, g, f]) => { const x = g(A), y = g(B); return `<tr><td>${l}</td><td class="${x > y ? 'bst' : ''}">${f(A)}</td><td class="${y > x ? 'bst' : ''}">${f(B)}</td></tr>`; }).join('') : '';
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="backTo('${pk ? 'player' : 'stats'}')">‹ Zurück</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Duell</h1>
+  <div class="seg"><select class="in" aria-label="Spieler 1" onchange="duelA=this.value;render()">${opt(a)}</select><select class="in" aria-label="Spieler 2" onchange="duelB=this.value;render()">${opt(b)}</select></div>
+  ${!d.rows.length || a === b ? '<div class="card"><p class="mute">Diese beiden haben noch kein gemeinsames Match gespielt.</p></div>' : `<div class="card win"><div class="mute sm">${d.rows.length} ${d.rows.length === 1 ? 'Match' : 'Matches'} gegeneinander</div>
+  <div class="num" style="font-size:3rem"><span style="color:${cA}">${A ? A.w : 0}</span> : <span style="color:${cB}">${B ? B.w : 0}</span></div>
+  <table class="et" style="margin-top:8px"><tr><th></th><th style="color:${cA}">${esc(A ? A.n : a)}</th><th style="color:${cB}">${esc(B ? B.n : b)}</th></tr>${tr}</table></div>
+  <div class="card"><h2>Matches</h2>${[...d.rows].reverse().map(matchRow).join('')}</div>`}</div>`;
+}
+function throwLog(c) {
+  const legs = [...new Set(c.P.flatMap(p => p.v.map(v => v.leg)))].sort((a, b) => a - b);
+  const body = legs.map(l => {
+    const cols = c.P.map(p => p.v.filter(v => v.leg === l)), n = Math.max(...cols.map(x => x.length));
+    const rows = Array.from({ length: n }, (_, i) => `<tr><td>${i + 1}</td>${cols.map(x => `<td>${x[i] ? x[i].d.map(lbl).join(' ') + ' = ' + (x[i].bust ? '<span style="color:var(--red)">Bust</span>' : x[i].sum) : ''}</td>`).join('')}</tr>`).join('');
+    return `<div class="mute sm" style="margin-top:10px">Leg ${l + 1}</div><table class="et"><tr><th>#</th>${c.P.map(p => `<th>${esc(p.name)}</th>`).join('')}</tr>${rows}</table>`;
+  }).join('');
+  return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
+}
+
+function render() { if (match) hear(); $('#app').innerHTML = (match ? matchView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -331,7 +527,7 @@ function joinCode() {
 function leave(keep) {
   if (channel) db.removeChannel(channel);
   channel = null; match = null; camLeave(); unwake();
-  if (!keep) { view = 'home'; history.replaceState(null, '', location.pathname); render(); }
+  if (!keep) { view = 'home'; loadKnown(); history.replaceState(null, '', location.pathname); render(); }
 }
 async function save() {
   const { error } = await db.from('matches').update({ state: match.st, finished: calc(match.st.cfg, match.st.ev).winner !== null, updated_at: new Date().toISOString() }).eq('id', match.id);
@@ -483,8 +679,17 @@ function setPanel() {
   <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
   <h3>Gerät</h3>${cb('vib', 'Vibration beim Eintragen (nur Android)')}
   <div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>
+  <h3>App</h3><div class="srow"><span>App aufs Handy legen</span><button class="ghost" onclick="installApp()">Installieren</button></div>
+  <p class="mute sm">iPhone: In Safari auf Teilen tippen, dann „Zum Home-Bildschirm“. Android: Browser-Menü, dann „App installieren“.</p>
   <button class="main" onclick="toggleSet()">Fertig</button></div></div>`;
 }
+let dip = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); dip = e; });
+function installApp() {
+  if (dip) { dip.prompt(); dip = null; return; }
+  toast(/iphone|ipad|ipod/i.test(navigator.userAgent) ? 'Safari: Teilen, dann Zum Home-Bildschirm' : 'Browser-Menü: App installieren');
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 // Browser erlauben Ton erst nach der ersten Berührung
 addEventListener('pointerdown', () => {
   try { getAc().resume(); } catch (e) {}
@@ -631,6 +836,7 @@ async function toggleCam() {
 
 // ---------- Start ----------
 render();
+loadKnown();
 const q0 = new URLSearchParams(location.search), m0 = q0.get('m');
 if (m0) openMatch(m0.toUpperCase(), q0.get('p'));
 </script>
