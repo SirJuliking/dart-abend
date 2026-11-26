@@ -44,7 +44,7 @@ th,td{padding:8px 4px;text-align:right;border-bottom:1px solid var(--line);white
 th:nth-child(-n+2),td:nth-child(-n+2){text-align:left}
 th{color:var(--mute);font-weight:400;font-size:.8rem}
 .win{text-align:center}
-.crow{display:grid;grid-template-columns:70px 1fr 120px;gap:8px;align-items:center;margin:8px 0}
+.crow{display:grid;grid-template-columns:90px 1fr 48px;gap:8px;align-items:center;margin:8px 0}
 .bar{background:var(--bg);border-radius:6px;height:22px}.bar i{display:block;height:100%;background:var(--green);border-radius:6px;min-width:2px}
 #camBox{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);max-width:560px;margin:0 auto;padding:8px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .tile{position:relative}.tile.big{grid-column:1/-1}
@@ -55,6 +55,18 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .tile input{position:absolute;right:8px;bottom:6px;width:48%}
 @media (min-width:900px){.tile video{height:26vh}.tile.big video{height:50vh}}
 .prow{display:flex;gap:8px}.prow input{flex:3;min-width:0}.prow select{flex:2;min-width:0}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.panel{background:var(--panel);border:1px solid var(--line);width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
+.panel h3{margin:16px 0 2px;font-family:Oswald,sans-serif;color:var(--mute);font-weight:500;font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
+.srow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.srow input[type=checkbox]{width:22px;height:22px;accent-color:var(--green)}
+.srow input[type=range]{width:55%;accent-color:var(--green)}
+.srow select{padding:8px;font:inherit;color:var(--chalk);background:var(--bg);border:1px solid var(--line);border-radius:10px}
+.th{background:none;border:0;padding:4px 2px;color:var(--mute);font-size:.8rem;border-radius:6px}
+.th.on{color:var(--chalk);font-weight:700}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+td.bst{color:var(--green);font-weight:700}
+.et th:nth-child(n+2),.et td:nth-child(n+2){text-align:right}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--chalk);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:700;z-index:9}
 </style>
 </head>
@@ -126,7 +138,7 @@ function home() {
   <input class="in" id="code" placeholder="Code oder Spielercode" maxlength="14" autocapitalize="characters" style="text-transform:uppercase">
   <p class="mute sm" style="margin:0 0 8px">Mit dem normalen Code schaust du zu. Mit dem Spielercode kannst du mitspielen und eintragen.</p>
   <button class="main" onclick="joinCode()">Beitreten</button></div>
-  <button class="ghost" onclick="showStats()">Ranking und Statistiken</button></div>`;
+  <div class="seg"><button class="ghost" onclick="showStats()">Ranking und Statistiken</button><button class="ghost" onclick="toggleSet()">⚙ Einstellungen</button></div></div>`;
 }
 
 function col(p, i, c) {
@@ -150,29 +162,29 @@ function matchView() {
   const st = match.st, c = calc(st.cfg, st.ev), cp = c.P[c.turn];
   const left = 3 - (c.cur ? c.cur.d.length : 0);
   const hint = !watch && c.winner === null ? route(cp.rem, left, cp.rule) : null;
-  const w = c.winner !== null ? `<div class="card win"><h2>${esc(c.P[c.winner].name)} gewinnt</h2>${watch ? '' : `<button class="main" onclick="rematch()">Revanche</button>
-    <button class="ghost" style="margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button>`}</div>` : '';
+  const w = c.winner !== null ? endView(c) : '';
   const sh = shareOpen && !watch ? `<div class="seg"><button onclick="share(false)">Link zum Mitspielen</button><button onclick="share(true)">Link für Zuschauer</button></div>` : '';
   const pc = watch ? '' : `<div style="margin:0 0 8px"><button class="ghost" style="padding:6px 10px;font-size:.85rem" onclick="showPc=!showPc;render()">${showPc ? 'Spielercode verbergen' : 'Spielercode anzeigen'}</button></div>`
     + (showPc ? `<div class="card win" style="margin:0 0 10px"><div class="mute sm">Spielercode (nur für Mitspieler)</div><div class="num" style="font-size:1.8rem">${esc(match.id + '-' + psec)}</div><button class="ghost" onclick="copyPc()">Kopieren</button></div>` : '');
   const bottom = c.winner !== null ? w : watch ? `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>`
-    : `<div class="hint">${hint ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`;
+    : `<div class="hint">${hint && S.chk ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`;
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button>
   <span class="mute">Zuschauer-Code <b style="color:var(--chalk)">${match.id}</b></span>
-  <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="toggleVoice()" aria-label="Ansage an oder aus">${voiceOn ? '🔊' : '🔇'}</button> <button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}${pc}
+  <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="toggleVoice()" aria-label="Ton an oder aus">${S.on ? '🔊' : '🔇'}</button> <button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button> <button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}${pc}
   <div class="board" style="--n:${c.P.length}">${c.P.map((p, i) => col(p, i, c)).join('')}</div>
   ${bottom}</div>`;
 }
 
 // ---------- Statistiken ----------
 function agg(rows) {
-  const S = {};
+  const A = {}; let gi = 0;
   for (const r of rows) {
     if (!r.state.cfg) continue;
+    gi++;
     const c = calc(r.state.cfg, r.state.ev);
     c.P.forEach((p, i) => {
       const k = p.name.trim().toLowerCase();
-      const s = S[k] ??= { n: p.name.trim(), g: 0, w: 0, pts: 0, dr: 0, f9: 0, f9d: 0, h180: 0, h140: 0, hf: 0, ch: 0, co: 0, av: [] };
+      const s = A[k] ??= { n: p.name.trim(), g: 0, w: 0, pts: 0, dr: 0, f9: 0, f9d: 0, h180: 0, h140: 0, hf: 0, ch: 0, co: 0, av: [] };
       s.g++; if (c.winner === i) s.w++;
       let pts = 0, dr = 0; const seen = {};
       for (const v of p.v) {
@@ -182,33 +194,102 @@ function agg(rows) {
         if (seen[v.leg] <= 3) { s.f9 += v.sum; s.f9d += v.d.length; }
         if (route(v.before, 3, p.rule)) { s.ch++; if (v.win) { s.co++; s.hf = Math.max(s.hf, v.sum); } }
       }
-      s.pts += pts; s.dr += dr; s.av.push(dr ? pts / dr * 3 : 0);
+      s.pts += pts; s.dr += dr; s.av.push([gi, dr ? pts / dr * 3 : 0]);
     });
   }
-  return Object.values(S);
+  return { list: Object.values(A), total: gi };
 }
-const spark = a => {
-  a = a.slice(-10); if (a.length < 2) return '';
-  const w = 120, h = 30, mx = Math.max(...a), mn = Math.min(...a), r = (mx - mn) || 1;
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline fill="none" stroke="var(--chalk)" stroke-width="2" points="${a.map((v, i) => (i * w / (a.length - 1)).toFixed(1) + ',' + (h - 2 - (v - mn) / r * (h - 4)).toFixed(1)).join(' ')}"/></svg>`;
-};
 
+// Werte eines beendeten Matches (für den Endscreen)
+function mstats(c) {
+  return c.P.map(p => {
+    const m = { avg: 0, f9: 0, h180: 0, h140: 0, h100: 0, hf: 0, ch: 0, co: 0, best: 0, darts: 0, legs: 0 };
+    let pts = 0, f9 = 0, f9d = 0; const seen = {}, ld = {};
+    for (const v of p.v) {
+      m.darts += v.d.length; pts += v.sum; ld[v.leg] = (ld[v.leg] || 0) + v.d.length;
+      if (v.sum === 180) m.h180++; else if (v.sum >= 140) m.h140++; else if (v.sum >= 100) m.h100++;
+      seen[v.leg] = (seen[v.leg] || 0) + 1; if (seen[v.leg] <= 3) { f9 += v.sum; f9d += v.d.length; }
+      if (route(v.before, 3, p.rule)) m.ch++;
+      if (v.win) { m.co++; m.legs++; m.hf = Math.max(m.hf, v.sum); m.best = m.best ? Math.min(m.best, ld[v.leg]) : ld[v.leg]; }
+    }
+    m.avg = m.darts ? pts / m.darts * 3 : 0; m.f9 = f9d ? f9 / f9d * 3 : 0;
+    return m;
+  });
+}
+function endView(c) {
+  const M = mstats(c), cfg = match.st.cfg, legs = M.map(m => m.legs).join(' : ');
+  const rows = [
+    ['Average', m => m.avg, m => m.avg.toFixed(1), 1], ['First 9', m => m.f9, m => m.f9.toFixed(1), 1],
+    ['180er', m => m.h180, m => m.h180, 1], ['140+', m => m.h140, m => m.h140, 1], ['100+', m => m.h100, m => m.h100, 1],
+    ['Höchstes Finish', m => m.hf, m => m.hf || '–', 1],
+    ['Checkout-Quote', m => m.ch ? m.co / m.ch : 0, m => m.ch ? Math.round(m.co / m.ch * 100) + '% (' + m.co + '/' + m.ch + ')' : '–', 1],
+    ['Schnellstes Leg', m => m.best || 999, m => m.best ? m.best + ' Darts' : '–', -1],
+    ['Darts gesamt', m => m.darts, m => m.darts, 0]
+  ];
+  const tr = rows.map(([l, g, f, dir]) => {
+    const vals = M.map(g), top = dir === 1 ? Math.max(...vals) : Math.min(...vals);
+    const mark = dir !== 0 && new Set(vals).size > 1 && (dir === 1 ? top > 0 : top < 999);
+    return `<tr><td>${l}</td>${M.map((m, i) => `<td class="${mark && vals[i] === top ? 'bst' : ''}">${f(m)}</td>`).join('')}</tr>`;
+  }).join('');
+  return `<div class="card win"><div class="mute sm">Spiel beendet</div><h2 style="font-size:1.9rem">${esc(c.P[c.winner].name)} gewinnt</h2>
+  <div class="num" style="font-size:2.8rem">${cfg.sets > 1 ? c.P.map(p => p.sets).join(' : ') : legs}</div>
+  <div class="mute sm">${cfg.sets > 1 ? 'Sätze, Legs insgesamt ' + legs : 'Legs'}</div>
+  <div style="overflow-x:auto;margin-top:12px"><table class="et"><tr><th></th>${c.P.map(p => `<th style="max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</th>`).join('')}</tr>${tr}</table></div>
+  ${watch ? '' : '<button class="main" onclick="rematch()">Revanche</button><button class="ghost" style="width:100%;margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button>'}
+  <button class="ghost" style="width:100%;margin-top:8px" onclick="showStats()">Zum Ranking</button></div>`;
+}
+
+// ---------- Ranking ----------
+const PAL = ['#3DAA74', '#E4483D', '#F2C14E', '#5AA9E6', '#B08BDB', '#F28C4E', '#4FD1C5', '#E879A6'];
+let SC = null, sk = 'q', sd = -1;
+const pc0 = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
+const COLS = [
+  ['n', 'Spieler', s => s.n.toLowerCase(), s => esc(s.n)],
+  ['g', 'Spiele', s => s.g, s => s.g],
+  ['w', 'Siege', s => s.w, s => s.w],
+  ['q', 'Quote', s => s.g ? s.w / s.g : 0, s => pc0(s.w, s.g)],
+  ['avg', 'Ø', s => s.dr ? s.pts / s.dr : 0, s => s.dr ? (s.pts / s.dr * 3).toFixed(1) : '–'],
+  ['f9', 'First 9', s => s.f9d ? s.f9 / s.f9d : 0, s => s.f9d ? (s.f9 / s.f9d * 3).toFixed(1) : '–'],
+  ['h180', '180', s => s.h180, s => s.h180],
+  ['h140', '140+', s => s.h140, s => s.h140],
+  ['hf', 'Hi-Finish', s => s.hf, s => s.hf || '–'],
+  ['co', 'Checkout', s => s.ch ? s.co / s.ch : 0, s => pc0(s.co, s.ch)]
+];
+function setSort(k) { if (sk === k) sd = -sd; else { sk = k; sd = k === 'n' ? 1 : -1; } render(); }
+function chart(list, total, color) {
+  const lo = Math.max(1, total - 19);
+  const pl = list.map(s => ({ s, pts: s.av.filter(a => a[0] >= lo) })).filter(x => x.pts.length);
+  const all = pl.flatMap(x => x.pts.map(a => a[1]));
+  if (all.length < 2) return '<p class="mute">Noch zu wenig Daten für den Verlauf.</p>';
+  const y0 = Math.max(0, Math.floor(Math.min(...all) / 10) * 10), y1 = Math.max(y0 + 10, Math.ceil(Math.max(...all) / 10) * 10);
+  const W = 360, H = 220, L = 34, R = 12, T = 12, B = 26;
+  const X = g => (L + (total === lo ? 0.5 : (g - lo) / (total - lo)) * (W - L - R)).toFixed(1);
+  const Y = v => (T + (y1 - v) / (y1 - y0) * (H - T - B)).toFixed(1);
+  const grid = [0, 1, 2, 3, 4].map(k => { const v = y0 + k * (y1 - y0) / 4; return `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${+Y(v) + 3}" text-anchor="end" font-size="10" fill="var(--mute)">${Math.round(v)}</text>`; }).join('');
+  const lines = pl.map(({ s, pts }) => { const c = color(s); return `<polyline fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(a => X(a[0]) + ',' + Y(a[1])).join(' ')}"/>` + pts.map(a => `<circle cx="${X(a[0])}" cy="${Y(a[1])}" r="3.5" fill="${c}" stroke="var(--panel)" stroke-width="1.5"/>`).join(''); }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Average-Verlauf der Spieler">${grid}${lines}<text x="${L}" y="${H - 6}" font-size="10" fill="var(--mute)">älter</text><text x="${W - R}" y="${H - 6}" font-size="10" text-anchor="end" fill="var(--mute)">neuestes Match</text></svg>`;
+}
+function statsView() {
+  const { list, total } = SC, g = COLS.find(c => c[0] === sk)[2];
+  const rows = [...list].sort((a, b) => (g(a) > g(b) ? 1 : g(a) < g(b) ? -1 : 0) * sd || (b.w / b.g - a.w / a.g));
+  const names = list.map(s => s.n.toLowerCase()).sort(), color = s => PAL[names.indexOf(s.n.toLowerCase()) % PAL.length];
+  const avg = s => s.dr ? s.pts / s.dr * 3 : 0, mx = Math.max(1, ...list.map(avg));
+  const head = COLS.map(c => `<th><button class="th ${sk === c[0] ? 'on' : ''}" onclick="setSort('${c[0]}')">${c[1]}${sk === c[0] ? (sd < 0 ? ' ▼' : ' ▲') : ''}</button></th>`).join('');
+  const body = rows.map((s, i) => `<tr><td>${i + 1}</td>${COLS.map((c, j) => `<td>${j === 0 ? `<span class="dot" style="background:${color(s)}"></span>` : ''}${c[3](s)}</td>`).join('')}</tr>`).join('');
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Ranking</h1>
+  <div class="card" style="overflow-x:auto"><table><tr><th>#</th>${head}</tr>${body || '<tr><td colspan="11" class="mute">Noch keine beendeten Matches.</td></tr>'}</table></div>
+  <p class="mute sm">Tippe auf eine Spaltenüberschrift, um zu sortieren.</p>
+  <div class="card"><h2>Average-Verlauf</h2>${chart(list, total, color)}
+  <div style="margin-top:10px">${[...list].sort((a, b) => avg(b) - avg(a)).map(s => `<div class="crow"><span class="nm"><span class="dot" style="background:${color(s)}"></span>${esc(s.n)}</span><div class="bar"><i style="width:${avg(s) / mx * 100}%;background:${color(s)}"></i></div><span>${avg(s).toFixed(1)}</span></div>`).join('')}</div>
+  <p class="mute sm">Ø = Punkte pro 3 Darts. Der Verlauf zeigt die letzten 20 Matches. Gezählt werden nur beendete Matches.</p></div></div>`;
+}
 async function showStats() {
   const { data, error } = await db.from('matches').select('state').eq('finished', true).order('created_at');
   if (error) return toast('Statistiken konnten nicht geladen werden');
-  const rows = agg(data).sort((a, b) => b.w / b.g - a.w / a.g || b.pts / b.dr - a.pts / a.dr);
-  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
-  const avg = s => s.dr ? s.pts / s.dr * 3 : 0, mx = Math.max(1, ...rows.map(avg));
-  leave(true);
-  $('#app').innerHTML = `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button></div><h1>Ranking</h1>
-  <div class="card" style="overflow-x:auto"><table><tr><th>#</th><th>Spieler</th><th>Spiele</th><th>Siege</th><th>Quote</th><th>Ø</th><th>First 9</th><th>180</th><th>140+</th><th>Hi-Finish</th><th>Checkout</th></tr>
-  ${rows.map((s, i) => `<tr><td>${i+1}</td><td>${esc(s.n)}</td><td>${s.g}</td><td>${s.w}</td><td>${pct(s.w, s.g)}</td><td>${avg(s).toFixed(1)}</td><td>${s.f9d ? (s.f9 / s.f9d * 3).toFixed(1) : '–'}</td><td>${s.h180}</td><td>${s.h140}</td><td>${s.hf || '–'}</td><td>${pct(s.co, s.ch)}</td></tr>`).join('') || '<tr><td colspan="11" class="mute">Noch keine beendeten Matches.</td></tr>'}</table></div>
-  <div class="card"><h2>Average und Verlauf</h2>
-  ${rows.map(s => `<div class="crow"><span class="nm">${esc(s.n)}</span><div class="bar"><i style="width:${avg(s) / mx * 100}%"></i></div><span>${avg(s).toFixed(1)} ${spark(s.av)}</span></div>`).join('')}
-  <p class="mute sm">Ø = Punkte pro 3 Darts. Die Linie zeigt den Average der letzten 10 Matches. Gezählt werden nur beendete Matches.</p></div></div>`;
+  SC = agg(data); leave(true); view = 'stats'; render();
 }
 
-function render() { if (match) hear(); $('#app').innerHTML = match ? matchView() : home(); }
+function render() { if (match) hear(); $('#app').innerHTML = (match ? matchView() : view === 'stats' ? statsView() : home()) + (showSet ? setPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -240,7 +321,7 @@ async function openMatch(id, sec = null) {
   history.replaceState(null, '', '?m=' + id + (sec ? '&p=' + sec : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
     p => { match.st = p.new.state; render(); }).subscribe();
-  camJoin(id); render();
+  camJoin(id); wake(); render();
 }
 function joinCode() {
   const [id, sec] = $('#code').value.trim().toUpperCase().replace(/\s/g, '').split('-');
@@ -249,8 +330,8 @@ function joinCode() {
 }
 function leave(keep) {
   if (channel) db.removeChannel(channel);
-  channel = null; match = null; camLeave();
-  if (!keep) { history.replaceState(null, '', location.pathname); render(); }
+  channel = null; match = null; camLeave(); unwake();
+  if (!keep) { view = 'home'; history.replaceState(null, '', location.pathname); render(); }
 }
 async function save() {
   const { error } = await db.from('matches').update({ state: match.st, finished: calc(match.st.cfg, match.st.ev).winner !== null, updated_at: new Date().toISOString() }).eq('id', match.id);
@@ -258,6 +339,7 @@ async function save() {
 }
 function dart(x) {
   if (watch) return;
+  if (S.vib && navigator.vibrate) navigator.vibrate(12);
   const st = match.st, c = calc(st.cfg, st.ev);
   if (c.winner !== null) return;
   let e;
@@ -292,10 +374,15 @@ function copyPc() {
   navigator.clipboard.writeText(t).then(() => toast('Spielercode kopiert'), () => toast(t));
 }
 
-// ---------- Ansage: echte Aufnahmen (sprache.wav + sprache.json), sonst Stimme des Geräts ----------
+// ---------- Einstellungen und Ansage ----------
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-let heard = 0, voiceOn = lsGet('dv') !== '0', ac = null, pack = null, packTried = false, playing = [];
+const DEF = { on: true, vol: 100, a100: true, achk: true, awin: true, voice: 'auto', chk: true, wake: true, vib: false, cam: 'environment' };
+let S = { ...DEF };
+try { S = { ...DEF, ...JSON.parse(lsGet('ds') || '{}') }; } catch (e) {}
+if (lsGet('dv') === '0' && !lsGet('ds')) S.on = false;
+const saveS = () => lsSet('ds', JSON.stringify(S));
+let heard = 0, view = 'home', showSet = false, ac = null, gain = null, pack = null, packTried = false, playing = [], wl = null;
 const dl = l => l === 'Bull' ? 'Bull' : l === '25' ? 'fünfundzwanzig' : ({ S: 'Single ', D: 'Doppel ', T: 'Triple ' })[l[0]] + l.slice(1);
 const ck = l => l === 'Bull' ? ['bull'] : l === '25' ? ['n25'] : [{ S: 'single', D: 'doppel', T: 'triple' }[l[0]], 'n' + l.slice(1)];
 function phrases(cfg, ev, h) {
@@ -306,26 +393,32 @@ function phrases(cfg, ev, h) {
   if (ap.v.length > bp.v.length) {
     const v = ap.v.at(-1);
     if (v.win) {
-      if (after.winner !== null) say(`Spiel, Satz und Match, ${ap.name}`, ['match', pk]);
-      else if (ap.sets > bp.sets) say(`Satz für ${ap.name}`, ['satz_fuer', pk]);
-      else say(`Leg für ${ap.name}`, ['leg_fuer', pk]);
-    } else if (v.sum === 180) say('Einhundertachtzig!', ['n180']);
-    else if (v.sum >= 100) say(String(v.sum), ['n' + v.sum]);
+      if (S.awin) {
+        if (after.winner !== null) say(`Spiel, Satz und Match, ${ap.name}`, ['match', pk]);
+        else if (ap.sets > bp.sets) say(`Satz für ${ap.name}`, ['satz_fuer', pk]);
+        else say(`Leg für ${ap.name}`, ['leg_fuer', pk]);
+      }
+    } else if (S.a100 && v.sum === 180) say('Einhundertachtzig!', ['n180']);
+    else if (S.a100 && v.sum >= 100) say(String(v.sum), ['n' + v.sum]);
   }
-  if (after.winner === null && !after.cur) {
+  if (S.achk && after.winner === null && !after.cur) {
     const q = after.P[after.turn], r = route(q.rem, 3, q.rule);
     if (r) say(`${q.name}, ${q.rem} Rest: ${r.map(dl).join(', ')}`, ['p' + (after.turn + 1), ...r.flatMap(ck)]);
   }
   return out;
 }
+function getAc() {
+  if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); gain = ac.createGain(); gain.connect(ac.destination); }
+  return ac;
+}
 async function loadPack() {
   if (packTried) return; packTried = true;
   try {
-    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const a = getAc();
     const [j, w] = await Promise.all([fetch('sprache.json'), fetch('sprache.wav')]);
     if (!j.ok || !w.ok) return;
     const idx = await j.json();
-    pack = { idx, buf: await ac.decodeAudioData(await w.arrayBuffer()) };
+    pack = { idx, buf: await a.decodeAudioData(await w.arrayBuffer()) };
   } catch (e) {}
 }
 function stopAll() {
@@ -334,13 +427,14 @@ function stopAll() {
 }
 function speak(list) {
   stopAll();
-  if (pack && list.every(x => x.k && x.k.every(c => pack.idx[c]))) {
+  if (S.voice === 'auto' && pack && list.every(x => x.k && x.k.every(c => pack.idx[c]))) {
     if (ac.state === 'suspended') ac.resume();
+    gain.gain.value = S.vol / 100;
     let at = ac.currentTime + 0.05;
     list.forEach(x => {
       x.k.forEach(c => {
         const g = pack.idx[c], src = ac.createBufferSource();
-        src.buffer = pack.buf; src.connect(ac.destination); src.start(at, g.s, g.e - g.s);
+        src.buffer = pack.buf; src.connect(gain); src.start(at, g.s, g.e - g.s);
         playing.push(src); at += g.e - g.s + 0.04;
       });
       at += 0.25;
@@ -349,23 +443,51 @@ function speak(list) {
   }
   if (!window.speechSynthesis) return;
   const v = speechSynthesis.getVoices().find(x => x.lang.startsWith('de'));
-  list.forEach(x => { const u = new SpeechSynthesisUtterance(x.t); u.lang = 'de-DE'; if (v) u.voice = v; speechSynthesis.speak(u); });
+  list.forEach(x => { const u = new SpeechSynthesisUtterance(x.t); u.lang = 'de-DE'; u.volume = S.vol / 100; if (v) u.voice = v; speechSynthesis.speak(u); });
 }
 function hear() {
   const st = match.st, n = st.ev.length;
   if (n < heard) { heard = n; return; }
   const ph = phrases(st.cfg, st.ev, heard); heard = n;
-  if (voiceOn && ph.length) speak(ph);
+  if (S.on && ph.length) speak(ph);
 }
 function toggleVoice() {
-  voiceOn = !voiceOn; lsSet('dv', voiceOn ? '1' : '0');
-  if (!voiceOn) stopAll();
-  toast(voiceOn ? (pack ? 'Ansage an (deine Aufnahmen)' : 'Ansage an (Gerätestimme)') : 'Ansage aus');
+  S.on = !S.on; saveS();
+  if (!S.on) stopAll();
+  toast(S.on ? (pack && S.voice === 'auto' ? 'Ton an (deine Aufnahmen)' : 'Ton an (Gerätestimme)') : 'Ton aus');
   render();
+}
+function setS(k, v) { S[k] = v; saveS(); if (k === 'wake') (v ? wake() : unwake()); if (k === 'on' && !v) stopAll(); render(); }
+function volSet(v) { S.vol = +v; saveS(); }
+function toggleSet() { showSet = !showSet; render(); }
+function probe() { speak([{ t: 'Einhundertachtzig!', k: ['n180'] }]); }
+async function wake() {
+  try {
+    if (S.wake && match && navigator.wakeLock && !wl) {
+      wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; });
+    }
+  } catch (e) {}
+}
+function unwake() { try { wl && wl.release(); } catch (e) {} wl = null; }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+function setPanel() {
+  const cb = (k, l) => `<label class="srow"><span>${l}</span><input type="checkbox" ${S[k] ? 'checked' : ''} onchange="setS('${k}', this.checked)"></label>`;
+  const op = (k, v, l) => `<option value="${v}" ${S[k] === v ? 'selected' : ''}>${l}</option>`;
+  return `<div class="ov" onclick="if(event.target===this)toggleSet()"><div class="panel" role="dialog" aria-label="Einstellungen">
+  <h2>Einstellungen</h2><p class="mute sm">Gelten nur für dieses Gerät.</p>
+  <h3>Ton</h3>${cb('on', 'Ton und Ansage')}
+  <div class="srow"><span>Lautstärke</span><input type="range" min="0" max="100" value="${S.vol}" oninput="volSet(this.value)" aria-label="Lautstärke"></div>
+  <div class="srow"><span>Stimme</span><select onchange="setS('voice', this.value)">${op('voice', 'auto', 'Meine Aufnahmen')}${op('voice', 'device', 'Gerätestimme')}</select></div>
+  <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn')}
+  <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button>
+  <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
+  <h3>Gerät</h3>${cb('vib', 'Vibration beim Eintragen (nur Android)')}
+  <div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>
+  <button class="main" onclick="toggleSet()">Fertig</button></div></div>`;
 }
 // Browser erlauben Ton erst nach der ersten Berührung
 addEventListener('pointerdown', () => {
-  try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) {}
+  try { getAc().resume(); } catch (e) {}
   loadPack();
   if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
 }, { once: true });
@@ -498,7 +620,7 @@ async function toggleCam() {
     Object.values(pcs).forEach(pc => pc.getSenders().forEach(x => x.replaceTrack(null).catch(() => {})));
     sig({ t: 'camoff' }); dropTile('me'); return render();
   }
-  try { raw = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); }
+  try { raw = await navigator.mediaDevices.getUserMedia({ video: { facingMode: S.cam, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); }
   catch (e) { return toast('Kamera nicht erlaubt'); }
   const cap = raw.getVideoTracks()[0].getCapabilities ? raw.getVideoTracks()[0].getCapabilities() : {};
   zoomHW = cap.zoom || null; Z = 1; panX = panY = .5;
