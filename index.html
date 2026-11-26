@@ -65,7 +65,7 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 const db = supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let names = ['', ''], outs = ['double', 'double'], watch = false, shareOpen = false, start = 501, legsW = 3, setsW = 1, match = null, channel = null, mult = 1;
+let names = ['', ''], outs = ['double', 'double'], watch = false, psec = '', showPc = false, shareOpen = false, start = 501, legsW = 3, setsW = 1, match = null, channel = null, mult = 1;
 
 // ---------- Checkout-Weg (Double-Out) ----------
 const D = [];
@@ -123,8 +123,9 @@ function home() {
   <select class="in" onchange="setsW=+this.value">${opt([1,2,3,4,5], setsW, n => n + (n > 1 ? ' Sätze' : ' Satz') + ' zum Sieg')}</select></div>
   <button class="main" onclick="create()">Match starten</button></div>
   <div class="card"><h2>Match beitreten</h2>
-  <input class="in" id="code" placeholder="Code, z. B. K7QM2" maxlength="5" style="text-transform:uppercase">
-  <div class="seg"><button class="main" onclick="openMatch($('#code').value.trim().toUpperCase())">Mitspielen</button><button class="main" style="background:none;color:var(--chalk);border-color:var(--line)" onclick="openMatch($('#code').value.trim().toUpperCase(), true)">Zuschauen</button></div></div>
+  <input class="in" id="code" placeholder="Code oder Spielercode" maxlength="14" autocapitalize="characters" style="text-transform:uppercase">
+  <p class="mute sm" style="margin:0 0 8px">Mit dem normalen Code schaust du zu. Mit dem Spielercode kannst du mitspielen und eintragen.</p>
+  <button class="main" onclick="joinCode()">Beitreten</button></div>
   <button class="ghost" onclick="showStats()">Ranking und Statistiken</button></div>`;
 }
 
@@ -152,11 +153,13 @@ function matchView() {
   const w = c.winner !== null ? `<div class="card win"><h2>${esc(c.P[c.winner].name)} gewinnt</h2>${watch ? '' : `<button class="main" onclick="rematch()">Revanche</button>
     <button class="ghost" style="margin-top:8px" onclick="undo()">Letzten Dart korrigieren</button>`}</div>` : '';
   const sh = shareOpen && !watch ? `<div class="seg"><button onclick="share(false)">Link zum Mitspielen</button><button onclick="share(true)">Link für Zuschauer</button></div>` : '';
+  const pc = watch ? '' : `<div style="margin:0 0 8px"><button class="ghost" style="padding:6px 10px;font-size:.85rem" onclick="showPc=!showPc;render()">${showPc ? 'Spielercode verbergen' : 'Spielercode anzeigen'}</button></div>`
+    + (showPc ? `<div class="card win" style="margin:0 0 10px"><div class="mute sm">Spielercode (nur für Mitspieler)</div><div class="num" style="font-size:1.8rem">${esc(match.id + '-' + psec)}</div><button class="ghost" onclick="copyPc()">Kopieren</button></div>` : '');
   const bottom = c.winner !== null ? w : watch ? `<div class="hint">Am Wurf: <b>${esc(cp.name)}</b></div>`
     : `<div class="hint">${hint ? 'Checkout: <b>' + hint.join(', ') + '</b>' : '&nbsp;'}</div>${pad()}`;
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="leave()">‹ Zurück</button>
-  <span class="mute">${watch ? 'Zuschauer' : 'Code'} <b style="color:var(--chalk)">${match.id}</b></span>
-  <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}
+  <span class="mute">Zuschauer-Code <b style="color:var(--chalk)">${match.id}</b></span>
+  <span>${watch ? '' : `<button class="ghost" onclick="toggleCam()">${stream ? 'Kamera aus' : 'Kamera'}</button> `}<button class="ghost" onclick="toggleVoice()" aria-label="Ansage an oder aus">${voiceOn ? '🔊' : '🔇'}</button> <button class="ghost" onclick="${watch ? 'share(true)' : 'shareOpen=!shareOpen;render()'}">Teilen</button></span></div>${sh}${pc}
   <div class="board" style="--n:${c.P.length}">${c.P.map((p, i) => col(p, i, c)).join('')}</div>
   ${bottom}</div>`;
 }
@@ -205,7 +208,7 @@ async function showStats() {
   <p class="mute sm">Ø = Punkte pro 3 Darts. Die Linie zeigt den Average der letzten 10 Matches. Gezählt werden nur beendete Matches.</p></div></div>`;
 }
 
-function render() { $('#app').innerHTML = match ? matchView() : home(); }
+function render() { if (match) hear(); $('#app').innerHTML = match ? matchView() : home(); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -213,29 +216,36 @@ function toast(t) {
 
 // ---------- Aktionen ----------
 function addP() { names.push(''); outs.push('double'); render(); }
-function code() {
+const sha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(x => x.toString(16).padStart(2, '0')).join('');
+function code(n = 5) {
   const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({length: 5}, () => c[Math.random() * c.length | 0]).join('');
+  return Array.from({length: n}, () => c[Math.random() * c.length | 0]).join('');
 }
 async function create(list = names, cfg0 = { start, legs: legsW, sets: setsW }, ol = outs) {
   const ps = [], os = [];
   list.forEach((n, i) => { if (n.trim()) { ps.push(n.trim()); os.push(ol[i] || 'double'); } });
   if (ps.length < 2) return toast('Mindestens zwei Spieler eintragen');
-  const id = code();
-  const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps, outs: os }, ev: [] } });
+  const id = code(), sec = code(8);
+  const { error } = await db.from('matches').insert({ id, state: { cfg: { ...cfg0, players: ps, outs: os }, ev: [], ph: await sha(sec) } });
   if (error) return toast('Match konnte nicht erstellt werden');
-  openMatch(id);
+  openMatch(id, sec);
 }
-async function openMatch(id, w = false) {
+async function openMatch(id, sec = null) {
   const { data, error } = await db.from('matches').select('state').eq('id', id).maybeSingle();
   if (error || !data) return toast('Match nicht gefunden');
   if (!data.state.cfg) return toast('Dieses Match stammt aus der alten Version');
+  if (sec && data.state.ph && await sha(sec) !== data.state.ph) return toast('Spielercode stimmt nicht');
   leave(true);
-  match = { id, st: data.state }; mult = 1; watch = !!w; shareOpen = false;
-  history.replaceState(null, '', '?m=' + id + (watch ? '&w=1' : ''));
+  match = { id, st: data.state }; heard = data.state.ev.length; mult = 1; watch = !sec; psec = sec || ''; shareOpen = false; showPc = false;
+  history.replaceState(null, '', '?m=' + id + (sec ? '&p=' + sec : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
     p => { match.st = p.new.state; render(); }).subscribe();
   camJoin(id); render();
+}
+function joinCode() {
+  const [id, sec] = $('#code').value.trim().toUpperCase().replace(/\s/g, '').split('-');
+  if (!id) return toast('Bitte einen Code eingeben');
+  openMatch(id, sec || null);
 }
 function leave(keep) {
   if (channel) db.removeChannel(channel);
@@ -271,11 +281,63 @@ function rematch() {
   create(ps, { start: cfg.start, legs: cfg.legs, sets: cfg.sets }, os);
 }
 async function share(w) {
-  const url = location.origin + location.pathname + '?m=' + match.id + (w ? '&w=1' : '');
+  const url = location.origin + location.pathname + '?m=' + match.id + (w || watch ? '' : '&p=' + psec);
   shareOpen = false; render();
   if (navigator.share) { try { await navigator.share({ title: 'Dart-Abend', url }); return; } catch (e) {} }
   try { await navigator.clipboard.writeText(url); toast('Link kopiert'); } catch (e) { toast(url); }
 }
+
+function copyPc() {
+  const t = match.id + '-' + psec;
+  navigator.clipboard.writeText(t).then(() => toast('Spielercode kopiert'), () => toast(t));
+}
+
+// ---------- Ansage (Sprachausgabe im Browser, Deutsch) ----------
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+let heard = 0, voiceOn = lsGet('dv') !== '0';
+const dl = l => l === 'Bull' ? 'Bull' : l === '25' ? 'fünfundzwanzig' : ({ S: 'Single ', D: 'Doppel ', T: 'Triple ' })[l[0]] + l.slice(1);
+function phrases(cfg, ev, h) {
+  const out = [];
+  if (ev.length <= h) return out;
+  const before = calc(cfg, ev.slice(0, -1)), after = calc(cfg, ev);
+  const t = before.turn, bp = before.P[t], ap = after.P[t];
+  if (ap.v.length > bp.v.length) {
+    const v = ap.v.at(-1);
+    if (v.win) {
+      if (after.winner !== null) out.push(`Spiel, Satz und Match, ${ap.name}`);
+      else if (ap.sets > bp.sets) out.push(`Satz für ${ap.name}`);
+      else out.push(`Leg für ${ap.name}`);
+    } else if (v.sum === 180) out.push('Einhundertachtzig!');
+    else if (v.sum >= 100) out.push(String(v.sum));
+  }
+  if (after.winner === null && !after.cur) {
+    const q = after.P[after.turn], r = route(q.rem, 3, q.rule);
+    if (r) out.push(`${q.name}, ${q.rem} Rest: ${r.map(dl).join(', ')}`);
+  }
+  return out;
+}
+function speak(list) {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const v = speechSynthesis.getVoices().find(x => x.lang.startsWith('de'));
+  list.forEach(t => { const u = new SpeechSynthesisUtterance(t); u.lang = 'de-DE'; if (v) u.voice = v; speechSynthesis.speak(u); });
+}
+function hear() {
+  const st = match.st, n = st.ev.length;
+  if (n < heard) { heard = n; return; }
+  const ph = phrases(st.cfg, st.ev, heard); heard = n;
+  if (voiceOn && ph.length) speak(ph);
+}
+function toggleVoice() {
+  voiceOn = !voiceOn; lsSet('dv', voiceOn ? '1' : '0');
+  if (!voiceOn && window.speechSynthesis) speechSynthesis.cancel();
+  render();
+}
+// Browser erlauben Sprache erst nach der ersten Berührung
+addEventListener('pointerdown', () => {
+  if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); }
+}, { once: true });
 
 // ---------- Kamera (WebRTC, jeder sieht jeden) ----------
 let ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }, ...(CFG.TURN || [])] };
@@ -417,7 +479,7 @@ async function toggleCam() {
 // ---------- Start ----------
 render();
 const q0 = new URLSearchParams(location.search), m0 = q0.get('m');
-if (m0) openMatch(m0.toUpperCase(), q0.get('w') === '1');
+if (m0) openMatch(m0.toUpperCase(), q0.get('p'));
 </script>
 </body>
 </html>
