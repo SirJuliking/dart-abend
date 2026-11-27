@@ -66,7 +66,7 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .px{flex:none;width:36px;padding:0;margin-bottom:8px;color:var(--mute)}
 .addp{width:100%;border-style:dashed;background:none;margin:0 0 14px;color:var(--mute)}
 .fl{display:block;font-size:.85rem;color:var(--mute);margin:6px 0 4px}
-.prow{display:flex;gap:8px}.prow input{flex:2;min-width:0}.prow select{flex:2;min-width:0;padding-left:8px;padding-right:4px}
+.prow{display:grid;grid-template-columns:30px 1fr 120px 36px;gap:8px}.prow input,.prow select{min-width:0}.prow select{padding-left:8px;padding-right:4px}.prow select.w2{grid-column:span 2}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .panel{background:var(--panel);border:1px solid var(--line);width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
 .panel h3{margin:16px 0 2px;font-family:Oswald,sans-serif;color:var(--mute);font-weight:500;font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
@@ -166,7 +166,7 @@ function newView() {
   const opt = (arr, cur, f) => arr.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${f(n)}</option>`).join('');
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Neues Match</h1>
   <div class="card"><div class="lbl">Spieler</div>
-  ${names.map((n, i) => `<div class="prow"><span class="pn">${i + 1}</span><input class="in" placeholder="Name" aria-label="Spieler ${i + 1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${i >= 2 ? `<button class="ghost px" aria-label="Spieler ${i + 1} entfernen" onclick="delP(${i})">✕</button>` : ''}</div>`).join('')}
+  ${names.map((n, i) => `<div class="prow"><span class="pn">${i + 1}</span><input class="in" placeholder="Name" aria-label="Spieler ${i + 1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in ${i >= 2 ? '' : 'w2'}" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${i >= 2 ? `<button class="ghost px" aria-label="Spieler ${i + 1} entfernen" onclick="delP(${i})">✕</button>` : ''}</div>`).join('')}
   ${names.length < 4 ? '<button class="ghost addp" onclick="addP()">+ Spieler hinzufügen</button>' : ''}
   ${chips()}
   </div>
