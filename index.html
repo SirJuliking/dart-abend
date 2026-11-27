@@ -65,6 +65,7 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .panel{background:var(--panel);border:1px solid var(--line);width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
 .panel h3{margin:16px 0 2px;font-family:Oswald,sans-serif;color:var(--mute);font-weight:500;font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
+.sgrp{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:2px 12px 12px;margin:10px 0}.sgrp .srow:last-of-type{border-bottom:0}
 .srow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
 .srow input[type=checkbox]{width:22px;height:22px;accent-color:var(--green)}
 .srow input[type=range]{width:55%;accent-color:var(--green)}
@@ -780,18 +781,19 @@ function trainTab(rows) {
 // ---------- Admin ----------
 // Das Passwort schützt nur vor Versehen (die Prüfung läuft im Browser). Es ist kein echter Schutz der Datenbank.
 const ADMH = 'ca1f689bb29e95651f958ae23d5f35dc651e2ee3fbed7f64afb159b7d7fb7eb7';
-let adm = false, atab = 'm', af = 'all', ADM = [], ADMP = [], amore = 60;
+let adel = null, AE = null, adm = false, atab = 'm', af = 'all', ADM = [], ADMP = [], amore = 60;
 async function admLogin() {
   const v = ($('#apw') || {}).value || '';
   if (await sha('darts-admin:' + v) !== ADMH) return toast('Falsches Passwort');
   adm = true; showSet = false; atab = 'm'; af = 'all'; amore = 60;
   await admLoad(); nav('admin');
 }
-function admLogout() { adm = false; ADM = []; showSet = false; if (view === 'admin') view = 'home'; render(); }
+function admLogout() { adm = false; ADM = []; AE = null; adel = null; showSet = false; if (view === 'admin') view = 'home'; render(); }
 async function admLoad() {
   const { data, error } = await db.from('matches').select('id,created_at,finished,state').neq('id', '_CONFIG').order('created_at', { ascending: false }).limit(1500);
   if (error) return toast('Laden fehlgeschlagen');
   ADM = data || [];
+  await loadHid();
 }
 async function admAfter() { await Promise.all([loadStatsData(), loadTrain()]); loadKnown(); render(); }
 const admKind = r => r.state.tr ? 't' : r.state.cfg ? 'm' : 'o';
@@ -823,7 +825,8 @@ function admView() {
   if (atab === 'p') {
     ADMP = admPlayers();
     body = `<p class="mute sm">Ändert den Namen in allen Matches und Trainingseinheiten. Gibst du einen schon vorhandenen Namen ein, werden beide zusammengeführt.</p>
-    <div class="card">${ADMP.length ? ADMP.map((p, i) => `<div class="srow"><span><b>${esc(p.n)}</b><br><span class="mute sm">${p.m} Matches, ${p.t} Training</span></span><button class="ghost" onclick="admRename(${i})">Umbenennen</button></div>`).join('') : '<p class="mute">Keine Spieler gefunden.</p>'}</div>`;
+    <div class="card">${ADMP.length ? ADMP.map((p, i) => `<div class="srow"><span><b>${esc(p.n)}</b><br><span class="mute sm">${p.m} Matches, ${p.t} Training</span></span><span class="seg" style="margin:0;flex:none"><button class="ghost" onclick="admRename(${i})">Umbenennen</button><button class="ghost" style="color:var(--red)" onclick="adel=${i};render()">Löschen</button></span></div>`).join('') : '<p class="mute">Keine Spieler gefunden.</p>'}</div>
+    ${(HID.hp || []).length ? `<div class="card"><h2>Im Ranking ausgeblendet</h2>${HID.hp.map(k => `<div class="srow"><span>${esc(k)}</span><button class="ghost" onclick="admUnhide('${esc(k).replace(/'/g, '')}')">Einblenden</button></div>`).join('')}</div>` : ''}`;
   } else if (atab === 'm') {
     const fl = [['all', 'Alle'], ['done', 'Beendet'], ['open', 'Offen'], ['tr', 'Training'], ['trash', 'Papierkorb']];
     const rows = admFilter();
@@ -834,7 +837,7 @@ function admView() {
       const st = r.state.del ? 'Papierkorb' : k === 't' ? 'Training' : r.finished ? 'beendet' : 'offen';
       const bt = r.state.del
         ? `<button class="ghost" onclick="admDel('${r.id}',false)">Wiederherstellen</button><button class="ghost" style="color:var(--red)" onclick="admPurge(['${r.id}'])">Endgültig löschen</button>`
-        : `${k === 'm' ? `<button class="ghost" onclick="admNames('${r.id}')">Namen ändern</button>` : ''}<button class="ghost" style="color:var(--red)" onclick="admDel('${r.id}',true)">Löschen</button>`;
+        : `${k === 'm' ? `<button class="ghost" onclick="aeOpen('${r.id}')">Bearbeiten</button>` : ''}<button class="ghost" style="color:var(--red)" onclick="admDel('${r.id}',true)">Löschen</button>`;
       return `<div class="card"><div class="mute sm">${dt(r.created_at)}, ${st}, ${n} Darts, ${r.id}</div><b>${admTitle(r)}</b><div class="seg" style="margin-top:8px">${bt}</div></div>`;
     }).join('')}
     ${rows.length > amore ? `<button class="ghost" style="width:100%" onclick="amore+=60;render()">Mehr anzeigen</button>` : ''}`;
@@ -849,6 +852,115 @@ function admView() {
     <pre style="white-space:pre-wrap;user-select:all;background:var(--bg);padding:10px;border-radius:8px;font-size:.8rem">create policy "matches delete" on public.matches for delete using (true);</pre></div>`;
   }
   return `<div class="wrap">${head}${body}</div>`;
+}
+function adelPanel() {
+  const p = ADMP[adel]; if (!p) return '';
+  return `<div class="ov" onclick="if(event.target===this){adel=null;render()}"><div class="panel" role="dialog" aria-label="Spieler löschen">
+  <h2>${esc(p.n)} löschen</h2><p class="mute sm">Alles landet zuerst im Papierkorb und lässt sich dort wiederherstellen.</p>
+  <button class="ghost" style="width:100%;margin-top:8px" onclick="admPlayerDel('h')">Nur im Ranking ausblenden</button>
+  <p class="mute sm">Die Matches bleiben, ${esc(p.n)} taucht aber nicht mehr im Ranking und in den Vorschlägen auf.</p>
+  <button class="ghost" style="width:100%;margin-top:8px" onclick="admPlayerDel('t')">Nur Training löschen (${p.t})</button>
+  <button class="ghost" style="width:100%;margin-top:8px;color:var(--red)" onclick="admPlayerDel('a')">Alles löschen (${p.m} Matches, ${p.t} Training)</button>
+  <p class="mute sm">Achtung: Die Matches fehlen danach auch in den Statistiken der Gegner.</p>
+  <button class="ghost" style="width:100%;margin-top:8px" onclick="adel=null;render()">Abbrechen</button></div></div>`;
+}
+async function admPlayerDel(mode) {
+  const p = ADMP[adel]; if (!p) return;
+  const l = p.n.toLowerCase(), isP = x => String(x).trim().toLowerCase() === l;
+  adel = null;
+  if (mode === 'h') {
+    await loadHid(); if (!HID.hp.includes(l)) HID.hp.push(l);
+    await saveHid(); toast(p.n + ' ist im Ranking ausgeblendet'); return admAfter();
+  }
+  const rows = ADM.filter(r => !r.state.del && (mode === 'a' ? (r.state.cfg && r.state.cfg.players.some(isP)) || (r.state.tr && isP(r.state.tr.name)) : r.state.tr && isP(r.state.tr.name)));
+  if (!rows.length) { render(); return toast('Nichts zu löschen'); }
+  if (!confirm(`${rows.length} Einträge von ${p.n} in den Papierkorb legen?`)) return render();
+  let bad = 0;
+  for (let k = 0; k < rows.length; k += 8) await Promise.all(rows.slice(k, k + 8).map(async r => { if (!await admWrite(r, { ...r.state, del: 1 })) bad++; }));
+  toast(bad ? bad + ' konnten nicht gelöscht werden' : rows.length + ' in den Papierkorb gelegt'); await admAfter();
+}
+async function admUnhide(k) {
+  await loadHid(); HID.hp = HID.hp.filter(x => x !== k.toLowerCase());
+  await saveHid(); toast('Wieder eingeblendet'); await admAfter();
+}
+
+// ----- Match im Nachhinein bearbeiten -----
+// Der Spielstand wird immer aus Einstellungen und Wurfliste berechnet. Ändert man einen Wurf, wird alles danach neu gewertet.
+function aeOpen(id) {
+  const r = ADM.find(x => x.id === id); if (!r || !r.state.cfg) return;
+  AE = { id, cfg: JSON.parse(JSON.stringify(r.state.cfg)), ev: JSON.parse(JSON.stringify(r.state.ev || [])), sel: null, m: 1, x: 20 };
+  AE.cfg.outs = AE.cfg.players.map((_, i) => (AE.cfg.outs || [])[i] || 'double');
+  view = 'aedit'; render(); scrollTo(0, 0);
+}
+function aeCancel() { AE = null; view = 'admin'; render(); }
+function aeVisits() {
+  const c = calc(AE.cfg, AE.ev), all = [];
+  c.P.forEach(p => p.v.forEach(v => all.push({ from: v.n - v.d.length + 1, to: v.n, name: p.name, v })));
+  if (c.cur) all.push({ from: c.cur.n - c.cur.d.length + 1, to: c.cur.n, name: c.P[c.turn].name, open: true });
+  all.sort((a, b) => a.from - b.from);
+  const used = all.length ? all[all.length - 1].to + 1 : 0;
+  return { c, all, used };
+}
+function aeSel(i) {
+  AE.sel = i === AE.sel ? null : i;
+  if (typeof AE.sel === 'number') { const d = AE.ev[AE.sel]; if (d && d[0]) { AE.m = d[0]; AE.x = d[1]; } }
+  render();
+}
+function aeVal() {
+  if (AE.x === 25 && AE.m === 3) { toast('Triple 25 gibt es nicht'); return null; }
+  return [AE.m, AE.x];
+}
+function aeApply(mode) {
+  let d;
+  if (mode === 'del') { AE.ev.splice(AE.sel, 1); AE.sel = null; return render(); }
+  if (mode === 'miss') d = [0, 0]; else { d = aeVal(); if (!d) return; }
+  if (mode === 'add') AE.ev.push(d);
+  else if (mode === 'ins') AE.ev.splice(AE.sel, 0, d);
+  else AE.ev[AE.sel] = d;
+  AE.sel = null; render();
+}
+async function aeSave() {
+  const names = AE.cfg.players.map(n => String(n).trim().slice(0, 20));
+  if (names.some(n => !n)) return toast('Namen dürfen nicht leer sein');
+  if (new Set(names.map(n => n.toLowerCase())).size < names.length) return toast('Die Namen müssen verschieden sein');
+  const start = +AE.cfg.start;
+  if (!(start >= 2 && start <= 1501)) return toast('Startzahl von 2 bis 1501');
+  const cfg = { ...AE.cfg, players: names, start }, res = calc(cfg, AE.ev), fin = res.winner !== null;
+  const r = ADM.find(x => x.id === AE.id); if (!r) return;
+  if (!confirm(`Änderungen speichern?\nDas Match wird als ${fin ? 'beendet' : 'noch offen'} gespeichert${fin ? ' (Sieger: ' + res.P[res.winner].name + ')' : ''}.`)) return;
+  const st = { ...r.state, cfg, ev: AE.ev };
+  const { error } = await db.from('matches').update({ state: st, finished: fin }).eq('id', r.id);
+  if (error) return toast('Speichern fehlgeschlagen');
+  r.state = st; r.finished = fin; AE = null; view = 'admin';
+  toast('Match gespeichert'); await admAfter();
+}
+function aeView() {
+  const { c, all, used } = aeVisits(), cfg = AE.cfg, sel = AE.sel;
+  const ro = (k, v, l) => `<option value="${v}" ${k === v ? 'selected' : ''}>${l}</option>`;
+  const sets = `<div class="card"><h2>Einstellungen</h2>
+    ${cfg.players.map((n, i) => `<div class="srow"><input class="in" style="margin:0" value="${esc(n)}" maxlength="20" aria-label="Name Spieler ${i + 1}" oninput="AE.cfg.players[${i}]=this.value">
+      <select aria-label="Check-out-Regel" onchange="AE.cfg.outs[${i}]=this.value;render()">${['double', 'master', 'single'].map(v => ro(cfg.outs[i], v, RL[v])).join('')}</select></div>`).join('')}
+    <div class="srow"><span>Startzahl</span><input class="in" type="number" inputmode="numeric" style="margin:0;width:110px" value="${cfg.start}" onchange="AE.cfg.start=+this.value;render()"></div>
+    <div class="srow"><span>Legs pro Satz</span><select onchange="AE.cfg.legs=+this.value;render()">${Array.from({ length: 10 }, (_, i) => ro(cfg.legs, i + 1, i + 1)).join('')}</select></div>
+    <div class="srow"><span>Sätze</span><select onchange="AE.cfg.sets=+this.value;render()">${Array.from({ length: 10 }, (_, i) => ro(cfg.sets, i + 1, i + 1)).join('')}</select></div></div>`;
+  const res = `<div class="card"><h2>Ergebnis</h2>${c.P.map(p => `<div class="srow"><span><b>${esc(p.name)}</b></span><span>Sätze ${p.sets}, Legs ${p.legs}, Rest ${p.rem}</span></div>`).join('')}
+    <p>${c.winner !== null ? 'Sieger: <b>' + esc(c.P[c.winner].name) + '</b>. Wird als beendet gespeichert.' : 'Noch kein Sieger. Wird als offen gespeichert.'}</p></div>`;
+  const chip = i => `<button class="chip ${sel === i ? 'on' : ''}" onclick="aeSel(${i})">${lbl(AE.ev[i])}</button>`;
+  const visits = all.map(o => `<div class="srow" style="display:block"><div class="mute sm">${esc(o.name)}, Leg ${(o.v ? o.v.leg : c.cur.leg) + 1}${o.v && o.v.bust ? ', Bust' : ''}${o.v && o.v.win ? ', Leg gewonnen' : ''}${o.v ? ', ' + o.v.sum + ' Punkte' : ', läuft'}</div>
+    <div class="chips" style="margin:4px 0 0">${Array.from({ length: o.to - o.from + 1 }, (_, k) => chip(o.from + k)).join('')}</div></div>`).join('');
+  const ign = used < AE.ev.length ? `<div class="srow" style="display:block"><div class="mute sm">Ohne Wertung (nach dem Matchende)</div><div class="chips" style="margin:4px 0 0">${Array.from({ length: AE.ev.length - used }, (_, k) => chip(used + k)).join('')}</div></div>` : '';
+  const num = [...Array.from({ length: 20 }, (_, i) => i + 1), 25];
+  const picker = sel !== null ? `<div class="card" style="border-color:var(--green)"><h2>${sel === 'new' ? 'Dart hinzufügen' : 'Dart ' + (sel + 1) + ' ändern'}</h2>
+    <div class="seg">${[[1, 'Single'], [2, 'Double'], [3, 'Triple']].map(([m, l]) => `<button class="${AE.m === m ? 'on' : ''}" onclick="AE.m=${m};render()">${l}</button>`).join('')}</div>
+    <select class="in" aria-label="Zahl" onchange="AE.x=+this.value;render()">${num.map(n => ro(AE.x, n, n === 25 ? '25 (Bull bei Double)' : n)).join('')}</select>
+    <p class="mute sm">Neuer Wert: <b>${lbl([AE.m, AE.x])}</b></p>
+    ${sel === 'new' ? `<button class="main" onclick="aeApply('add')">Hinzufügen</button><button class="ghost" style="width:100%;margin-top:6px" onclick="aeApply('miss');">Daneben (0) hinzufügen</button>`
+      : `<button class="main" onclick="aeApply('set')">Dart ersetzen</button><div class="seg"><button class="ghost" onclick="aeApply('ins')">Davor einfügen</button><button class="ghost" onclick="aeApply('miss')">Auf Daneben (0)</button><button class="ghost" style="color:var(--red)" onclick="aeApply('del')">Löschen</button></div>`}
+    <button class="ghost" style="width:100%;margin-top:6px" onclick="AE.sel=null;render()">Abbrechen</button></div>` : '';
+  return `<div class="wrap"><div class="top"><button class="ghost" onclick="aeCancel()">‹ Abbrechen</button><span class="mute">Match bearbeiten</span><span></span></div><h1>${esc(cfg.players.join(' gegen '))}</h1>
+  <p class="mute sm">Tippe auf einen Dart, um ihn zu ändern. Alle Darts danach werden neu gewertet. Bearbeite am besten nur Matches, die nicht mehr gespielt werden.</p>
+  ${sets}${res}<div class="card"><h2>Würfe</h2>${visits}${ign}<button class="ghost" style="width:100%;margin-top:10px" onclick="AE.sel='new';render()">Dart am Ende hinzufügen</button></div>${picker}
+  <button class="main" onclick="aeSave()">Speichern</button></div>`;
 }
 const admOld = r => admKind(r) === 'm' && !r.finished && !r.state.del && Date.now() - new Date(r.created_at) > 6 * 3600e3;
 async function admWrite(r, st) {
@@ -880,20 +992,6 @@ async function admPurge(ids) {
   if (error || gone.length < ids.length) { alert('Nur ' + gone.length + ' von ' + ids.length + ' wurden gelöscht. Wahrscheinlich ist Löschen in Supabase noch nicht erlaubt. Die Anleitung steht im Reiter „Daten“.'); }
   else toast(gone.length + ' endgültig gelöscht');
   await admAfter();
-}
-async function admNames(id) {
-  const r = ADM.find(x => x.id === id); if (!r || !r.state.cfg) return;
-  const old = r.state.cfg.players, nn = [];
-  for (let i = 0; i < old.length; i++) {
-    const v = prompt(`Name von Spieler ${i + 1}:`, old[i]);
-    if (v === null) return;
-    nn.push(v.trim().slice(0, 20));
-  }
-  if (nn.some(n => !n)) return toast('Namen dürfen nicht leer sein');
-  if (new Set(nn.map(n => n.toLowerCase())).size < nn.length) return toast('Die Namen müssen verschieden sein');
-  if (nn.every((n, i) => n === old[i])) return;
-  if (!await admWrite(r, { ...r.state, cfg: { ...r.state.cfg, players: nn } })) return toast('Speichern fehlgeschlagen');
-  toast('Namen geändert'); await admAfter();
 }
 async function admRename(i) {
   const p = ADMP[i]; if (!p) return;
@@ -984,7 +1082,7 @@ function throwLog(c) {
   return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
 }
 
-function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'admin' && adm ? admView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : ''); }
+function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'aedit' && adm && AE ? aeView() : view === 'admin' && adm ? admView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : '') + (adm && adel !== null && view === 'admin' && atab === 'p' ? adelPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -1203,27 +1301,33 @@ async function wake() {
 }
 function unwake() { try { wl && wl.release(); } catch (e) {} wl = null; }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+let stab = 'ton';
 function setPanel() {
   const cb = (k, l) => `<label class="srow"><span>${l}</span><input type="checkbox" ${S[k] ? 'checked' : ''} onchange="setS('${k}', this.checked)"></label>`;
   const op = (k, v, l) => `<option value="${v}" ${S[k] === v ? 'selected' : ''}>${l}</option>`;
+  const grp = (t, inner) => `<div class="sgrp"><h3>${t}</h3>${inner}</div>`;
+  const tab = (k, l) => `<button class="${stab === k ? 'on' : ''}" onclick="stab='${k}';render()">${l}</button>`;
+  let body = '';
+  if (stab === 'ton') body = grp('Ton', cb('on', 'Ton und Ansage')
+      + `<div class="srow"><span>Lautstärke</span><input type="range" min="0" max="100" value="${S.vol}" oninput="volSet(this.value)" aria-label="Lautstärke"></div>`
+      + `<div class="srow"><span>Stimme</span><select onchange="setS('voice', this.value)">${op('voice', 'auto', 'Meine Aufnahmen')}${op('voice', 'device', 'Gerätestimme')}</select></div>`)
+    + grp('Das wird angesagt', cb('a100', 'Hohe Aufnahmen (100+ und 180)') + cb('achk', 'Checkout-Hinweis') + cb('awin', 'Leg-, Satz- und Matchgewinn (mit dem wievielten Dart)') + cb('abust', 'Bust'))
+    + grp('Testen', `<button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button><p class="mute sm">${audioStatus()}</p>`);
+  else if (stab === 'anz') body = grp('Anzeige', cb('chk', 'Checkout-Vorschlag auf dem Bildschirm') + cb('wake', 'Bildschirm anlassen'))
+    + grp('Eingabe', cb('vib', 'Vibration beim Eintragen (nur Android)'));
+  else if (stab === 'cam') body = grp('Kamera', `<div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>`)
+    + grp('Clips', cb('clip', 'Clip-Aufnahme (Highlights speichern)')
+      + `<div class="srow"><span>Clip-Länge (ca.)</span><select onchange="setS('clipL', +this.value)">${op('clipL', 10, '10 bis 20 Sekunden')}${op('clipL', 15, '15 bis 30 Sekunden')}${op('clipL', 20, '20 bis 40 Sekunden')}</select></div>`
+      + `<p class="mute sm">Nimmt die gezeigte Kamera im Hintergrund auf. Auf schwächeren Geräten bitte ausschalten.</p>`);
+  else body = grp('App', `<div class="srow"><span>App aufs Handy legen</span><button class="ghost" onclick="installApp()">Installieren</button></div>`
+      + `<p class="mute sm">iPhone: In Safari auf Teilen tippen, dann „Zum Home-Bildschirm“. Android: Browser-Menü, dann „App installieren“.</p>`)
+    + grp('Admin', adm ? `<button class="main" onclick="showSet=false;nav('admin')">Admin-Bereich öffnen</button><button class="ghost" style="width:100%;margin-top:8px" onclick="admLogout()">Abmelden</button>`
+      : `<div class="srow"><input class="in" id="apw" type="password" inputmode="numeric" placeholder="Passwort" autocomplete="off" style="margin:0" onkeydown="if(event.key==='Enter')admLogin()"><button class="ghost" onclick="admLogin()">Öffnen</button></div>`);
   return `<div class="ov" onclick="if(event.target===this)toggleSet()"><div class="panel" role="dialog" aria-label="Einstellungen">
-  <h2>Einstellungen</h2><p class="mute sm">Gelten nur für dieses Gerät.</p>
-  <h3>Ton</h3>${cb('on', 'Ton und Ansage')}
-  <div class="srow"><span>Lautstärke</span><input type="range" min="0" max="100" value="${S.vol}" oninput="volSet(this.value)" aria-label="Lautstärke"></div>
-  <div class="srow"><span>Stimme</span><select onchange="setS('voice', this.value)">${op('voice', 'auto', 'Meine Aufnahmen')}${op('voice', 'device', 'Gerätestimme')}</select></div>
-  <h3>Das wird angesagt</h3>${cb('a100', 'Hohe Aufnahmen (100+ und 180)')}${cb('achk', 'Checkout-Hinweis')}${cb('awin', 'Leg-, Satz- und Matchgewinn (mit dem wievielten Dart)')}${cb('abust', 'Bust')}
-  <button class="ghost" style="width:100%;margin-top:10px" onclick="probe()">Probe-Ansage abspielen</button><p class="mute sm">${audioStatus()}</p>
-  <h3>Anzeige</h3>${cb('chk', 'Checkout-Vorschlag auf dem Bildschirm')}${cb('wake', 'Bildschirm anlassen')}
-  <h3>Clips</h3>${cb('clip', 'Clip-Aufnahme (Highlights speichern)')}
-  <div class="srow"><span>Clip-Länge (ca.)</span><select onchange="setS('clipL', +this.value)">${op('clipL', 10, '10 bis 20 Sekunden')}${op('clipL', 15, '15 bis 30 Sekunden')}${op('clipL', 20, '20 bis 40 Sekunden')}</select></div>
-  <p class="mute sm">Nimmt die gezeigte Kamera im Hintergrund auf. Auf schwächeren Geräten bitte ausschalten.</p>
-  <h3>Gerät</h3>${cb('vib', 'Vibration beim Eintragen (nur Android)')}
-  <div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>
-  <h3>Admin</h3>${adm ? `<button class="main" onclick="showSet=false;nav('admin')">Admin-Bereich öffnen</button><button class="ghost" style="width:100%;margin-top:8px" onclick="admLogout()">Abmelden</button>`
-    : `<div class="srow"><input class="in" id="apw" type="password" inputmode="numeric" placeholder="Passwort" autocomplete="off" style="margin:0" onkeydown="if(event.key==='Enter')admLogin()"><button class="ghost" onclick="admLogin()">Öffnen</button></div>`}
-  <h3>App</h3><div class="srow"><span>App aufs Handy legen</span><button class="ghost" onclick="installApp()">Installieren</button></div>
-  <p class="mute sm">iPhone: In Safari auf Teilen tippen, dann „Zum Home-Bildschirm“. Android: Browser-Menü, dann „App installieren“.</p>
-  <button class="main" onclick="toggleSet()">Fertig</button></div></div>`;
+  <div class="top" style="margin-top:0"><h2 style="margin:0">Einstellungen</h2><button class="ghost" onclick="toggleSet()">Fertig</button></div>
+  <p class="mute sm" style="margin:4px 0 0">Gelten nur für dieses Gerät.</p>
+  <div class="seg">${tab('ton', 'Ton')}${tab('anz', 'Anzeige')}${tab('cam', 'Kamera')}${tab('mehr', 'Mehr')}</div>
+  ${body}</div></div>`;
 }
 let dip = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); dip = e; });
