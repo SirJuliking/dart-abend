@@ -99,6 +99,7 @@ Datei auf GitHub ändern oder hochladen und „Commit". Vercel veröffentlicht a
 - Eintragen Dart für Dart (Single, Double, Triple, 25, Bull, 0). Zurücknehmen des letzten Darts.
 - Bust und Leg-/Matchgewinn werden erkannt und angezeigt.
 - Rematch mit einem Tipp.
+- Beitreten zeigt laufende Matches (zuletzt aktiv innerhalb der Aufräum-Zeit, Standard 10 Minuten), per Tipp ohne Code zuschauen; die Code-Eingabe bleibt.
 - Match-Code zum Zuschauen und separater Spielercode zum Mitspielen. Mehrere Geräte können eintragen.
 - Zuschauer sehen live mit (nur lesen).
 - Bildschirm bleibt an (Wake Lock), Vibration optional.
