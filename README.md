@@ -1,6 +1,20 @@
-Dies ist meine Darts-abend Website. Damit kann man gegeneinader Dart Spielen, wenn man in Unterschiedlichen Räumen ist. Also quasi Dart Counter nur kostenlos. 
-Für die Datenbank nutze ich Suprabase und hosten aktuell über Vecel.
-Geht bestimmt auch besser, allerdings möchte ich lieber eine kostenlose Variante nutzen.
+# Dart-Abend
 
-Ach ja, der Code ist von Claude geschrieben und wahrscheinlich nicht zu 100% der beste. 
-Ist aber egal, weil ich es eh nur privat mit freunden verwende
+Dies ist meine Darts-Abend-Website. Damit kann man gegeneinander Darts spielen, wenn man in unterschiedlichen Räumen ist. Also quasi ein Dart-Counter, nur kostenlos.
+Für die Datenbank nutze ich Supabase und gehostet wird aktuell über Vercel.
+Der Code ist von Claude geschrieben und wahrscheinlich nicht zu 100 % der beste. Ist aber egal, weil ich es nur privat mit Freunden verwende.
+
+## Was liegt wo?
+
+| Pfad | Inhalt |
+|---|---|
+| `index.html` | Die ganze App (Spiel, Kamera, Ranking, Training, Admin, Changelog) |
+| `config.js` | Zugangsdaten für Supabase |
+| `manifest.json`, `sw.js` | Installierbare App (PWA), müssen im Hauptordner bleiben |
+| `aufnehmen.html` | Seite zum Aufnehmen der eigenen Stimme (`/aufnehmen.html`, Zusatz-Paket: `/aufnehmen.html?zusatz`) |
+| `ton/` | Sprachaufnahmen: `sprache.wav/json` und Zusatz-Paket `sprache2.wav/json` |
+| `icons/` | App-Symbole |
+| `docs/` | Anleitungen (Update, Kamera, Training) |
+
+## Neue Sprachaufnahmen einspielen
+Die Aufnahme-Seite erzeugt `sprache.wav` und `sprache.json` (bzw. `sprache2.*`). Diese Dateien in den Ordner `ton/` hochladen und die alten ersetzen.

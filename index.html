@@ -6,7 +6,7 @@
 <title>Dart-Abend</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#14282A">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Dart-Abend">
@@ -1374,7 +1374,7 @@ async function loadPack() {
   if (packTried) return; packTried = true;
   try {
     const a = getAc();
-    const [j, w] = await Promise.all([fetch('sprache.json'), fetch('sprache.wav')]);
+    const [j, w] = await Promise.all([fetch('ton/sprache.json'), fetch('ton/sprache.wav')]);
     if (!j.ok || !w.ok) return;
     const idx = await j.json();
     const buf = await a.decodeAudioData(await w.arrayBuffer());
@@ -1383,7 +1383,7 @@ async function loadPack() {
   } catch (e) { return; }
   // Optionales Zusatz-Paket (neue Ansagen), ergänzt das Hauptpaket
   try {
-    const [j2, w2] = await Promise.all([fetch('sprache2.json'), fetch('sprache2.wav')]);
+    const [j2, w2] = await Promise.all([fetch('ton/sprache2.json'), fetch('ton/sprache2.wav')]);
     if (!j2.ok || !w2.ok) return;
     const i2 = await j2.json(), b2 = await getAc().decodeAudioData(await w2.arrayBuffer());
     Object.keys(i2).forEach(k => { i2[k].b = b2; pack.idx[k] = i2[k]; });
