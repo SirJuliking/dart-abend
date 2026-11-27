@@ -61,7 +61,12 @@ th{color:var(--mute);font-weight:400;font-size:.8rem}
 .tile.big video{height:42vh}
 .tile input{position:absolute;right:8px;bottom:6px;width:48%}
 @media (min-width:900px){.tile video{height:26vh}.tile.big video{height:50vh}}
-.prow{display:flex;gap:8px}.prow input{flex:3;min-width:0}.prow select{flex:2;min-width:0}
+.lbl{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin:0 0 10px;font-weight:600}
+.pn{flex:none;width:30px;height:30px;margin-top:9px;border-radius:50%;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700}
+.px{flex:none;width:36px;padding:0;margin-bottom:8px;color:var(--mute)}
+.addp{width:100%;border-style:dashed;background:none;margin:0 0 14px;color:var(--mute)}
+.fl{display:block;font-size:.85rem;color:var(--mute);margin:6px 0 4px}
+.prow{display:flex;gap:8px}.prow input{flex:2;min-width:0}.prow select{flex:2;min-width:0;padding-left:8px;padding-right:4px}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .panel{background:var(--panel);border:1px solid var(--line);width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
 .panel h3{margin:16px 0 2px;font-family:Oswald,sans-serif;color:var(--mute);font-weight:500;font-size:.85rem;letter-spacing:.06em;text-transform:uppercase}
@@ -156,17 +161,20 @@ function setCust(vn, v) {
   if (vn === 'start') start = n; else tstart = n;
   render();
 }
+function delP(i) { if (names.length <= 2) return; names.splice(i, 1); outs.splice(i, 1); render(); }
 function newView() {
   const opt = (arr, cur, f) => arr.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${f(n)}</option>`).join('');
   return `<div class="wrap"><div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><button class="ghost" onclick="toggleSet()" aria-label="Einstellungen">⚙</button></div><h1>Neues Match</h1>
-  <div class="card">
-  ${names.map((n, i) => `<div class="prow"><input class="in" placeholder="Spieler ${i+1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')}
+  <div class="card"><div class="lbl">Spieler</div>
+  ${names.map((n, i) => `<div class="prow"><span class="pn">${i + 1}</span><input class="in" placeholder="Name" aria-label="Spieler ${i + 1}" value="${esc(n)}" onchange="names[${i}]=this.value"><select class="in" aria-label="Check-out-Regel" onchange="outs[${i}]=this.value">${[['double','Double Out'],['master','Master Out'],['single','Single Out']].map(([v, l]) => `<option value="${v}" ${outs[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${i >= 2 ? `<button class="ghost px" aria-label="Spieler ${i + 1} entfernen" onclick="delP(${i})">✕</button>` : ''}</div>`).join('')}
+  ${names.length < 4 ? '<button class="ghost addp" onclick="addP()">+ Spieler hinzufügen</button>' : ''}
   ${chips()}
-  ${names.length < 4 ? '<button class="ghost" onclick="addP()">Spieler hinzufügen</button>' : ''}
-  <div class="seg"><button class="${start===301?'on':''}" onclick="start=301;render()">301</button><button class="${start===501?'on':''}" onclick="start=501;render()">501</button>${custIn(start, 'start')}</div>
-  <div class="seg"><select class="in" onchange="legsW=+this.value">${opt([1,2,3,4,5], legsW, n => n + (n > 1 ? ' Legs' : ' Leg') + ' pro Satz')}</select>
-  <select class="in" onchange="setsW=+this.value">${opt([1,2,3,4,5], setsW, n => n + (n > 1 ? ' Sätze' : ' Satz') + ' zum Sieg')}</select></div>
-  <button class="main" onclick="create()">Match starten</button></div>
+  </div>
+  <div class="card"><div class="lbl">Spiel</div>
+  <div class="seg" style="margin-top:0"><button class="${start===301?'on':''}" onclick="start=301;render()">301</button><button class="${start===501?'on':''}" onclick="start=501;render()">501</button>${custIn(start, 'start')}</div>
+  <label class="fl">Legs pro Satz</label><select class="in" onchange="legsW=+this.value">${opt([1,2,3,4,5], legsW, n => n + (n > 1 ? ' Legs' : ' Leg'))}</select>
+  <label class="fl">Sätze zum Sieg</label><select class="in" onchange="setsW=+this.value">${opt([1,2,3,4,5], setsW, n => n + (n > 1 ? ' Sätze' : ' Satz'))}</select></div>
+  <button class="main" style="padding:16px;font-size:1.1rem" onclick="create()">Match starten</button>
   </div>`;
 }
 
@@ -870,6 +878,7 @@ async function admRpcTest() {
 let clTab = 'web';
 const CHANGELOG = [
   { d: '27.11.2026', web: [
+    'Neues Match neu gestaltet: Bereiche „Spieler“ und „Spiel“, „Spieler hinzufügen“ direkt unter den Namen, zusätzliche Spieler lassen sich wieder entfernen',
     'Spieler im Ranking ausblenden betrifft nur diesen Spieler; seine Matches bleiben in den Statistiken der Gegner (einzelne Matches lassen sich weiter im Verlauf ausblenden)',
     'Sicheres Eintragen: gleichzeitig eingetragene Würfe von zwei Geräten gehen nicht mehr verloren (braucht einmalig das SQL im Admin-Bereich unter Daten)',
     'Offene Matches ohne neuen Wurf wandern automatisch in den Papierkorb (einstellbar, Standard 10 Minuten)',
