@@ -813,7 +813,7 @@ function throwLog(c) {
   return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
 }
 
-function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : ''); }
+function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -1087,6 +1087,7 @@ const iceReady = (async () => {
   } catch (e) {}
 })();
 const myId = Math.random().toString(36).slice(2, 8);
+let camAs = -1, peerAs = {}, camPick = false;
 let stream = null, pcs = {}, camCh = null, raw = null, zoomHW = null, Z = 1, panX = .5, panY = .5, camTimer = null;
 const sig = p => camCh && camCh.send({ type: 'broadcast', event: 'sig', payload: { ...p, from: myId } });
 const desc = d => ({ type: d.type, sdp: d.sdp });
@@ -1121,13 +1122,18 @@ function tile(id, label) {
   }
   return t;
 }
+function camLabel(id) {
+  const p = id === 'me' ? camAs : peerAs[id], n = match && p >= 0 && match.st.cfg.players[p];
+  return id === 'me' ? (n ? 'Du (' + n + ')' : 'Du') : (n || 'Mitspieler');
+}
+function relabel() { document.querySelectorAll('#camBox .tile').forEach(t => { const sp = t.querySelector('span'); if (sp) sp.textContent = camLabel(t.id.slice(2)); }); }
 function dropTile(id) { document.getElementById('t-' + id)?.remove(); updBox(); }
 function mkPc(peer) {
   pcs[peer]?.close();
   const pc = new RTCPeerConnection(ICE); pcs[peer] = pc;
   pc.onicecandidate = e => e.candidate && sig({ t: 'ice', to: peer, c: e.candidate.toJSON() });
   pc.ontrack = e => {
-    const t = tile(peer, 'Mitspieler'), v = t.querySelector('video');
+    const t = tile(peer, camLabel(peer)), v = t.querySelector('video');
     v.srcObject = e.streams[0] || new MediaStream([e.track]);
     t.hidden = true; updBox();
     e.track.onunmute = () => { t.hidden = false; updBox(); v.play().catch(() => {}); };
@@ -1148,7 +1154,9 @@ function camJoin(id) {
   camCh.on('broadcast', { event: 'sig' }, async ({ payload: m }) => {
     if (m.from === myId || (m.to && m.to !== myId)) return;
     await iceReady;
-    if (m.t === 'hello') {
+    if (stream && ['hello', 'offer', 'answer'].includes(m.t)) sig({ t: 'as', to: m.from, p: camAs });
+    if (m.t === 'as') { peerAs[m.from] = m.p; relabel(); }
+    else if (m.t === 'hello') {
       // Der mit der kleineren ID schickt das Angebot, so gibt es keinen Konflikt
       if (myId > m.from) return sig({ t: 'hello', to: m.from });
       const pc = mkPc(m.from), tr = pc.addTransceiver('video', { direction: 'sendrecv' });
@@ -1165,14 +1173,15 @@ function camJoin(id) {
     else if (m.t === 'ice' && pcs[m.from]) {
       const pc = pcs[m.from];
       if (pc.remoteDescription) pc.addIceCandidate(m.c).catch(() => {}); else (pc.q ??= []).push(m.c);
-    } else if (m.t === 'off') { pcs[m.from]?.close(); dropTile(m.from); }
-    else if (m.t === 'camoff') { const t = document.getElementById('t-' + m.from); if (t) { t.hidden = true; updBox(); } }
+    } else if (m.t === 'off') { pcs[m.from]?.close(); dropTile(m.from); delete peerAs[m.from]; }
+    else if (m.t === 'camoff') { delete peerAs[m.from]; const t = document.getElementById('t-' + m.from); if (t) { t.hidden = true; updBox(); } }
   }).subscribe(s => { if (s === 'SUBSCRIBED') sig({ t: 'hello' }); });
 }
 function camLeave() {
   sig({ t: 'off' });
   killCam();
   Object.values(pcs).forEach(p => p.close()); pcs = {};
+  camAs = -1; peerAs = {}; camPick = false;
   const ch = camCh; camCh = null;
   if (ch) setTimeout(() => db.removeChannel(ch), 400);
   $('#camBox').innerHTML = ''; $('#camBox').hidden = true;
@@ -1203,21 +1212,34 @@ async function toggleCam() {
   if (stream) {
     killCam();
     Object.values(pcs).forEach(pc => pc.getSenders().forEach(x => x.replaceTrack(null).catch(() => {})));
-    sig({ t: 'camoff' }); dropTile('me'); return render();
+    camAs = -1; sig({ t: 'camoff' }); dropTile('me'); return render();
   }
+  if (match && match.st.cfg.players.length > 1) { camPick = true; return render(); }
+  startCam(-1);
+}
+function pickPanel() {
+  const pl = match.st.cfg.players;
+  return `<div class="ov" onclick="if(event.target===this){camPick=false;render()}"><div class="panel" role="dialog" aria-label="Kamera zuordnen">
+  <h2>Wem gehört diese Kamera?</h2><p class="mute sm">Die Kamera filmt dann diesen Spieler. Seine Clips (letzte Aufnahme, Gewinnwurf) kommen von dieser Kamera. Eintragen können trotzdem alle.</p>
+  ${pl.map((n, i) => `<button class="main" onclick="startCam(${i})">${esc(n)}</button>`).join('')}
+  <button class="ghost" style="width:100%;margin-top:8px" onclick="startCam(-1)">Keinem zuordnen (Gerätekamera)</button>
+  <button class="ghost" style="width:100%;margin-top:8px" onclick="camPick=false;render()">Abbrechen</button></div></div>`;
+}
+async function startCam(as) {
+  camPick = false; camAs = as;
   try { raw = await navigator.mediaDevices.getUserMedia({ video: { facingMode: S.cam, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); }
-  catch (e) { return toast('Kamera nicht erlaubt'); }
+  catch (e) { camAs = -1; render(); return toast('Kamera nicht erlaubt'); }
   const cap = raw.getVideoTracks()[0].getCapabilities ? raw.getVideoTracks()[0].getCapabilities() : {};
   zoomHW = cap.zoom || null; Z = 1; panX = panY = .5;
   stream = zoomHW ? raw : digital(raw);
-  const t = tile('me', 'Du'); t.querySelector('video').srcObject = stream; t.hidden = false; updBox();
-  sig({ t: 'hello' }); render();
+  const t = tile('me', camLabel('me')); t.querySelector('video').srcObject = stream; t.hidden = false; updBox();
+  sig({ t: 'hello' }); sig({ t: 'as', p: camAs }); render();
 }
 
 // ---------- Clips: letzte Aufnahme und Gewinnwurf speichern ----------
 // Zwei Aufnahmen laufen versetzt im Hintergrund und werden nach 2 x Clip-Länge neu gestartet.
 // Bei einer abgeschlossenen Aufnahme wird die ältere gestoppt: das ergibt eine komplette, abspielbare Datei.
-const CL = { src: null, r: [null, null], tm: null, type: '', ext: 'webm', ok: false };
+const CL = { rec: {}, tm: null, type: '', ext: 'webm', ok: false };
 const clips = { visit: null, win: null };
 let cw = { n: 0, vis: 0 }, clipSeq = 0;
 function clipFmt() {
@@ -1229,35 +1251,53 @@ function clipFmt() {
   }
   return true;
 }
-function clipSrc() {
-  const ts = [...document.querySelectorAll('#camBox .tile')].filter(t => !t.hidden);
-  const t = ts.find(x => x.classList.contains('big')) || ts[0];
-  const v = t && t.querySelector('video'), m = v && v.srcObject;
-  return m && m.active && m.getVideoTracks().length ? m : null;
+// Alle sichtbaren Kamerabilder: { 'me': Stream, '<peer>': Stream }
+function clipSources() {
+  const out = {};
+  document.querySelectorAll('#camBox .tile').forEach(t => {
+    if (t.hidden) return;
+    const v = t.querySelector('video'), m = v && v.srcObject;
+    if (m && m.active && m.getVideoTracks().length) out[t.id.slice(2)] = m;
+  });
+  return out;
 }
-function clipStartRec(i, src) {
+// Welche Kamera gehört zum Spieler pi? Zugeordnete Kamera, sonst das eigene Gerät, sonst das große/erste Bild.
+function clipPick(pi) {
+  const src = clipSources(), ids = Object.keys(src);
+  if (pi >= 0) {
+    if (camAs === pi && src.me) return 'me';
+    const p = ids.find(id => id !== 'me' && peerAs[id] === pi);
+    if (p) return p;
+  }
+  if (src.me) return 'me';
+  const big = document.querySelector('#camBox .tile.big:not([hidden])'), bid = big && big.id.slice(2);
+  return bid && src[bid] ? bid : ids[0] || null;
+}
+function clipStartRec(e, i) {
   try {
-    const o = { videoBitsPerSecond: 1500000 }; if (CL.type) o.mimeType = CL.type;
-    const mr = new MediaRecorder(src, o), r = { mr, t0: Date.now(), ch: [] };
-    mr.ondataavailable = e => { if (e.data && e.data.size) r.ch.push(e.data); };
+    const o = { videoBitsPerSecond: Object.keys(CL.rec).length > 1 ? 1000000 : 1500000 }; if (CL.type) o.mimeType = CL.type;
+    const mr = new MediaRecorder(e.src, o), r = { mr, t0: Date.now(), ch: [] };
+    mr.ondataavailable = ev => { if (ev.data && ev.data.size) r.ch.push(ev.data); };
     mr.start(1000);
-    CL.r[i] = r;
-  } catch (e) { CL.r[i] = null; }
+    e.r[i] = r;
+  } catch (er) { e.r[i] = null; }
 }
-function clipDrop(i) {
-  const r = CL.r[i]; CL.r[i] = null;
-  if (r) { r.mr.ondataavailable = null; try { if (r.mr.state !== 'inactive') r.mr.stop(); } catch (e) {} }
+function clipDropOne(e, i) {
+  const r = e.r[i]; e.r[i] = null;
+  if (r) { r.mr.ondataavailable = null; try { if (r.mr.state !== 'inactive') r.mr.stop(); } catch (er) {} }
 }
-function clipOff() { clipDrop(0); clipDrop(1); CL.src = null; }
+function clipDrop(id) { const e = CL.rec[id]; if (e) { clipDropOne(e, 0); clipDropOne(e, 1); } delete CL.rec[id]; }
+function clipOff() { Object.keys(CL.rec).forEach(clipDrop); }
 function clipTick() {
   if (!match || !S.clip || !clipFmt()) return clipOff();
-  const src = clipSrc();
-  if (src !== CL.src) { clipOff(); CL.src = src; }
-  if (!src) return;
-  const L = S.clipL * 1000, now = Date.now();
-  for (let i = 0; i < 2; i++) if (CL.r[i] && now - CL.r[i].t0 >= 2 * L) { clipDrop(i); clipStartRec(i, src); }
-  if (!CL.r[0] && !CL.r[1]) clipStartRec(0, src);
-  else if (!(CL.r[0] && CL.r[1])) { const a = CL.r[0] || CL.r[1]; if (now - a.t0 >= L) clipStartRec(CL.r[0] ? 1 : 0, src); }
+  const srcs = clipSources(), L = S.clipL * 1000, now = Date.now();
+  Object.keys(CL.rec).forEach(id => { if (srcs[id] !== CL.rec[id].src) clipDrop(id); });
+  Object.entries(srcs).forEach(([id, src]) => {
+    const e = CL.rec[id] ??= { src, r: [null, null] };
+    for (let i = 0; i < 2; i++) if (e.r[i] && now - e.r[i].t0 >= 2 * L) { clipDropOne(e, i); clipStartRec(e, i); }
+    if (!e.r[0] && !e.r[1]) clipStartRec(e, 0);
+    else if (!(e.r[0] && e.r[1])) { const a = e.r[0] || e.r[1]; if (now - a.t0 >= L) clipStartRec(e, e.r[0] ? 1 : 0); }
+  });
 }
 function clipStart() {
   clips.visit = clips.win = null; clipSeq++;
@@ -1267,13 +1307,13 @@ function clipStart() {
   CL.tm = setInterval(clipTick, 2000);
 }
 function clipStop() { clearInterval(CL.tm); CL.tm = null; clipOff(); clips.visit = clips.win = null; clipSeq++; }
-function clipSnap() {
+function clipSnap(id) {
   return new Promise(res => {
-    const now = Date.now(), src = CL.src;
+    const now = Date.now(), e = CL.rec[id];
     let k = -1;
-    for (let i = 0; i < 2; i++) if (CL.r[i] && now - CL.r[i].t0 > 3000 && (k < 0 || CL.r[i].t0 < CL.r[k].t0)) k = i;
-    if (k < 0 || !src) return res(null);
-    const r = CL.r[k]; CL.r[k] = null;
+    if (e) for (let i = 0; i < 2; i++) if (e.r[i] && now - e.r[i].t0 > 3000 && (k < 0 || e.r[i].t0 < e.r[k].t0)) k = i;
+    if (k < 0) return res(null);
+    const r = e.r[k]; e.r[k] = null;
     let done = false;
     const fin = () => {
       if (done) return; done = true;
@@ -1281,8 +1321,8 @@ function clipSnap() {
       res(r.ch.length ? { blob: new Blob(r.ch, { type }), type, ext: type.includes('mp4') ? 'mp4' : 'webm', secs: Math.round((now - r.t0) / 1000) } : null);
     };
     r.mr.onstop = fin; setTimeout(fin, 3000);
-    try { r.mr.stop(); } catch (e) { fin(); }
-    clipStartRec(k, src);
+    try { r.mr.stop(); } catch (er) { fin(); }
+    clipStartRec(e, k);
   });
 }
 async function clipWatch() {
@@ -1293,9 +1333,9 @@ async function clipWatch() {
   const c = calc(st.cfg, st.ev), vis = nVis(c), was = cw.vis; cw = { n, vis };
   if (vis <= was) return;
   const last = c.P.flatMap(p => p.v.map(v => ({ p, v }))).sort((a, b) => b.v.n - a.v.n)[0];
-  const info = { name: last.p.name, sum: last.v.sum, bust: !!last.v.bust, win: c.winner !== null };
+  const info = { name: last.p.name, sum: last.v.sum, bust: !!last.v.bust, win: c.winner !== null }, cid = clipPick(c.P.indexOf(last.p));
   const mine = match, seq = ++clipSeq;
-  const cl = await clipSnap();
+  const cl = await clipSnap(cid);
   if (match !== mine || seq !== clipSeq || !cl) return;
   Object.assign(cl, info);
   clips.visit = cl; if (info.win) clips.win = cl;
@@ -1305,7 +1345,7 @@ const clipWin = () => clips.win ? `<button class="main" style="margin-bottom:6px
 function clipBar() {
   if (!S.clip || !window.MediaRecorder) return '';
   const c = clips.visit;
-  if (!c) return CL.src ? '<div class="mute sm" style="text-align:center;margin:6px 0">● Clip-Aufnahme läuft</div>' : '';
+  if (!c) return Object.keys(CL.rec).length ? '<div class="mute sm" style="text-align:center;margin:6px 0">● Clip-Aufnahme läuft</div>' : '';
   return `<button class="ghost" style="width:100%;margin:6px 0" onclick="saveClip('visit')">🎬 Letzte Aufnahme speichern (${esc(c.name)}, ${c.bust ? 'Bust' : c.sum})</button>`;
 }
 async function saveClip(k) {
