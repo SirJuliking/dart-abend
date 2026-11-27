@@ -354,7 +354,8 @@ async function loadStatsData() {
   ROWS = r.data; recompute(); return true;
 }
 async function showStats() {
-  if (!await loadStatsData()) return;
+  const [ok] = await Promise.all([loadStatsData(), loadTrain()]);
+  if (!ok) return;
   leave(true); edit = false; nav('stats');
 }
 function hidePlayer(k) {
@@ -719,6 +720,7 @@ function trainDone(s, st) {
 
 function trainTab(rows) {
   const by = k => rows.filter(r => r.state.tr.kind === k).map(r => ({ s: r.state.tr, t: r.created_at, st: tstat(r.state.tr) }));
+  if (!rows.length) return `<div class="card"><p class="mute">Noch kein Training gespielt.</p></div>`;
   const fin = by('fin'), sc = by('sc'), fl = by('fld'), lg = by('leg');
   const kvc = (title, kv, extra = '') => `<div class="card"><h2>${title}</h2><div class="kv">${kv.map(([l, v]) => `<div><span class="mute sm">${l}</span><b>${v}</b></div>`).join('')}</div>${extra}</div>`;
   const sum = (a, f) => a.reduce((x, y) => x + f(y.st), 0);
@@ -869,6 +871,7 @@ async function joinCode() {
     const { data } = await db.from('matches').select('id').eq('state->>ph', await sha(raw)).order('created_at', { ascending: false }).limit(1);
     if (data && data.length) return openMatch(data[0].id, raw);
   }
+  if (raw.startsWith('TR-')) return toast('Code nicht gefunden');
   const [id, sec] = raw.split('-');
   openMatch(id, sec || null);
 }
