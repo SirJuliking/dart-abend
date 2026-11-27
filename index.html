@@ -451,6 +451,26 @@ function profile(k) {
   return o;
 }
 const ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
+let bview = 'board', bsort = 'n';
+function boardTab(f) {
+  const rows = [];
+  for (let n = 1; n <= 20; n++) rows.push({ l: String(n), s: f['S' + n] || 0, d: f['D' + n] || 0, t: f['T' + n] || 0, n });
+  rows.push({ l: '25 / Bull', s: f.S25 || 0, d: f.Bull || 0, t: null, n: 25 });
+  rows.forEach(r => { r.g = r.s + r.d + (r.t || 0); });
+  const all = rows.reduce((a, r) => a + r.g, 0);
+  if (bsort === 't') rows.sort((a, b) => b.g - a.g || a.n - b.n);
+  const tot = k => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  return `<div style="overflow-x:auto"><table><tr><th style="text-align:left">Feld</th><th>Single</th><th>Double</th><th>Triple</th><th>Gesamt</th><th>Anteil</th></tr>
+  ${rows.map(r => `<tr><td style="text-align:left">${r.l}</td><td>${r.s}</td><td>${r.d}</td><td>${r.t === null ? '–' : r.t}</td><td><b>${r.g}</b></td><td>${pc0(r.g, all)}</td></tr>`).join('')}
+  <tr><td style="text-align:left"><b>Summe</b></td><td>${tot('s')}</td><td>${tot('d')}</td><td>${tot('t')}</td><td><b>${all}</b></td><td></td></tr></table></div>
+  <p class="mute sm">Nur Darts, die ein Feld getroffen haben (Daneben nicht mitgezählt).</p>`;
+}
+function boardBox(f) {
+  return `<div class="seg" style="margin-bottom:8px"><button class="${bview === 'board' ? 'on' : ''}" onclick="bview='board';render()">Dartscheibe</button><button class="${bview === 'tab' ? 'on' : ''}" onclick="bview='tab';render()">Tabelle</button></div>`
+    + (bview === 'tab'
+      ? `<div class="seg" style="margin-bottom:8px"><button class="${bsort === 'n' ? 'on' : ''}" onclick="bsort='n';render()">Nach Feld</button><button class="${bsort === 't' ? 'on' : ''}" onclick="bsort='t';render()">Nach Treffern</button></div>${boardTab(f)}`
+      : board(f));
+}
 function board(f) {
   const C = 170, ang = d => d * Math.PI / 180;
   const pt = (r, a) => (C + r * Math.sin(ang(a))).toFixed(1) + ' ' + (C - r * Math.cos(ang(a))).toFixed(1);
@@ -493,7 +513,7 @@ function playerView() {
   <div class="card"><h2>Wurfprofil</h2>
   <div class="stack" role="img" aria-label="Verteilung der Darts"><i style="width:${pr(o.m[0])}%;background:#4a6366"></i><i style="width:${pr(o.m[1])}%;background:var(--chalk)"></i><i style="width:${pr(o.m[2])}%;background:var(--red)"></i><i style="width:${pr(o.m[3])}%;background:var(--green)"></i></div>
   <p class="mute sm">Daneben ${pr(o.m[0])}%, Single ${pr(o.m[1])}%, Double ${pr(o.m[2])}%, Triple ${pr(o.m[3])}%</p>
-  ${board(o.f)}<p class="mute sm">Je heller ein Feld, desto öfter getroffen. Single, Double und Triple sind getrennt skaliert. Beim Single zählt die Eingabe nicht, ob innen oder außen.</p>
+  ${boardBox(o.f)}${bview === 'tab' ? '' : '<p class="mute sm">Je heller ein Feld, desto öfter getroffen. Single, Double und Triple sind getrennt skaliert. Beim Single zählt die Eingabe nicht, ob innen oder außen.</p>'}
   <p><b>Meistgetroffen:</b> ${top || '–'}</p></div>
   <div class="card"><h2>Aufnahmen</h2>${buckets}<p class="mute sm">Summe pro Aufnahme (3 Darts). Bust zählt als 0.</p></div>
   <div class="card"><h2>Doppel</h2>${dbl || '<p class="mute">Noch keine Doppelversuche.</p>'}<p class="mute sm">Gezählt werden Darts, wenn der Rest ein Doppel (2 bis 40 oder Bull) war. Treffer = Checkout.</p></div>
@@ -753,7 +773,7 @@ function trainTab(rows) {
   }
   const f = {}; let nd = 0;
   rows.forEach(r => { const s = r.state.tr; if (s.kind !== 'fin') s.ev.forEach(e => { if (e[0]) { const k = tkey(e); f[k] = (f[k] || 0) + 1; nd++; } }); });
-  if (nd) out += `<div class="card"><h2>Trefferbild im Training</h2>${board(f)}<p class="mute sm">Alle Darts aus Scoring, Zielfeld und Legs.</p></div>`;
+  if (nd) out += `<div class="card"><h2>Trefferbild im Training</h2>${boardBox(f)}<p class="mute sm">Alle Darts aus Scoring, Zielfeld und Legs.</p></div>`;
   return out + `<button class="ghost" style="width:100%" onclick="trainReset()">Trainingsdaten ausblenden</button>`;
 }
 
