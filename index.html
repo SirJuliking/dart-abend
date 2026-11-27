@@ -590,11 +590,18 @@ function tstat(s) {
   o.avg = o.darts ? o.pts / o.darts * 3 : 0;
   return o;
 }
+let tsBusy = false, tsAgain = false;
 async function tsave() {
   if (!TS.ev.length && !TS.saved) return;
   TS.saved = 1;
-  const { error } = await db.from('matches').upsert({ id: TS.id, state: { tr: TS }, finished: false, updated_at: new Date().toISOString() });
-  if (error) toast('Speichern fehlgeschlagen');
+  if (tsBusy) { tsAgain = true; return; }
+  tsBusy = true; let t0 = TS;
+  do {
+    tsAgain = false; t0 = TS || t0;
+    const { error } = await db.from('matches').upsert({ id: t0.id, state: { tr: t0 }, finished: false, updated_at: new Date().toISOString() });
+    if (error) toast('Speichern fehlgeschlagen');
+  } while (tsAgain);
+  tsBusy = false;
 }
 function trainGo() {
   const name = tname.trim();
@@ -817,10 +824,78 @@ function admPlayers() {
 function admFilter() {
   return ADM.filter(r => af === 'trash' ? r.state.del : !r.state.del && (af === 'all' || (af === 'done' && admKind(r) !== 't' && r.finished) || (af === 'open' && admKind(r) !== 't' && !r.finished) || (af === 'tr' && admKind(r) === 't')));
 }
+const RPC_SQL = `create or replace function ev_push(p_id text, p_e jsonb, p_op text default null)
+returns jsonb language plpgsql as $$
+declare s jsonb; o jsonb;
+begin
+  select state into s from public.matches where id = p_id for update;
+  if s is null then raise exception 'match not found'; end if;
+  o := coalesce(s->'ops', '[]'::jsonb);
+  if p_op is not null and o @> jsonb_build_array(p_op) then return s; end if;
+  s := jsonb_set(s, '{ev}', coalesce(s->'ev', '[]'::jsonb) || jsonb_build_array(p_e));
+  s := (s - 'del' - 'auto');
+  s := jsonb_set(s, '{v}', to_jsonb(coalesce((s->>'v')::int, 0) + 1));
+  if p_op is not null then
+    o := o || jsonb_build_array(p_op);
+    if jsonb_array_length(o) > 30 then o := o - 0; end if;
+    s := jsonb_set(s, '{ops}', o);
+  end if;
+  update public.matches set state = s, updated_at = now() where id = p_id;
+  return s;
+end $$;
+
+create or replace function ev_pop(p_id text)
+returns jsonb language plpgsql as $$
+declare s jsonb; n int;
+begin
+  select state into s from public.matches where id = p_id for update;
+  if s is null then raise exception 'match not found'; end if;
+  n := jsonb_array_length(coalesce(s->'ev', '[]'::jsonb));
+  if n > 0 then s := jsonb_set(s, '{ev}', (s->'ev') - (n - 1)); end if;
+  s := (s - 'del' - 'auto');
+  s := jsonb_set(s, '{v}', to_jsonb(coalesce((s->>'v')::int, 0) + 1));
+  update public.matches set state = s, updated_at = now() where id = p_id;
+  return s;
+end $$;`;
+async function admRpcCopy() { try { await navigator.clipboard.writeText(RPC_SQL); toast('SQL kopiert'); } catch (e) { toast('Bitte den Text selbst markieren und kopieren'); } }
+async function admRpcTest() {
+  const el = $('#rpcst'); let msg;
+  try {
+    const r = await db.rpc('ev_pop', { p_id: '_TEST_NICHT_VORHANDEN' });
+    const c = r.error && r.error.code;
+    if (c === 'PGRST202' || c === '42883' || r.status === 404) { noRpc = true; msg = 'Nicht eingerichtet: SQL oben ausführen.'; }
+    else { noRpc = false; msg = 'Funktioniert: Sicheres Eintragen ist aktiv.'; }
+  } catch (e) { msg = 'Test fehlgeschlagen (Verbindung?)'; }
+  if (el) el.textContent = 'Status: ' + msg; toast(msg);
+}
+let clTab = 'web';
+const CHANGELOG = [
+  { d: '27.11.2026', web: [
+    'Sicheres Eintragen: gleichzeitig eingetragene Würfe von zwei Geräten gehen nicht mehr verloren (braucht einmalig das SQL im Admin-Bereich unter Daten)',
+    'Offene Matches ohne neuen Wurf wandern automatisch in den Papierkorb (einstellbar, Standard 10 Minuten)',
+    'Einstellungen sind in Reiter aufgeteilt: Ton, Anzeige, Kamera, Mehr',
+    'Trefferverteilung im Profil und im Training auch als Tabelle',
+    'Kamera einem Spieler zuordnen; Clips kommen von der Kamera des Werfenden',
+    'Fixes: Trainingsdaten im Ranking-Profil, leerer Trainings-Reiter, Trainings-ID beim Beitreten'
+  ], adm: [
+    'Neuer Reiter „Changelog“',
+    'Daten: Karte „Sicheres Eintragen“ mit kopierbarem SQL und Funktionstest',
+    'Matches im Nachhinein bearbeiten (inklusive einzelner Würfe), Spieler löschen',
+    'Automatisches Aufräumen einstellbar, Papierkorb mit Wiederherstellen',
+    'Admin-Modus mit Passwort: Spieler umbenennen und zusammenführen, Matches verwalten, Sicherung als Datei'
+  ] },
+  { d: '26.11.2026', web: ['Stand der ersten Version im Repository: Online-Matches, Kamera, Ansagen, Ranking, Profile, Training, Replay-Clips'], adm: [] },
+  { d: 'Früher', web: ['Eigene Sprachaufnahmen, Zusatz-Paket mit „mit dem 1., 2., 3. Dart“ und Bust, freie Startzahl (2–1501)'], adm: [] }
+];
+function clView() {
+  const k = clTab, items = CHANGELOG.filter(e => e[k].length);
+  return `<div class="seg"><button class="${k === 'web' ? 'on' : ''}" onclick="clTab='web';render()">Website</button><button class="${k === 'adm' ? 'on' : ''}" onclick="clTab='adm';render()">Admin-Bereich</button></div>` +
+    items.map(e => `<div class="card"><h2>${esc(e.d)}</h2><ul style="margin:0;padding-left:18px">${e[k].map(x => `<li style="margin:4px 0">${esc(x)}</li>`).join('')}</ul></div>`).join('');
+}
 function admView() {
   const tab = (k, l) => `<button class="${atab === k ? 'on' : ''}" onclick="atab='${k}';render()">${l}</button>`;
   const head = `<div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><span class="mute">Admin-Modus</span><button class="ghost" onclick="admLogout()">Abmelden</button></div><h1>Admin</h1>
-  <div class="seg">${tab('p', 'Spieler')}${tab('m', 'Matches')}${tab('d', 'Daten')}</div>`;
+  <div class="seg">${tab('p', 'Spieler')}${tab('m', 'Matches')}${tab('d', 'Daten')}${tab('c', 'Changelog')}</div>`;
   let body = '';
   if (atab === 'p') {
     ADMP = admPlayers();
@@ -841,7 +916,7 @@ function admView() {
       return `<div class="card"><div class="mute sm">${dt(r.created_at)}, ${st}${r.state.auto ? ' (automatisch)' : ''}, ${n} Darts, ${r.id}</div><b>${admTitle(r)}</b><div class="seg" style="margin-top:8px">${bt}</div></div>`;
     }).join('')}
     ${rows.length > amore ? `<button class="ghost" style="width:100%" onclick="amore+=60;render()">Mehr anzeigen</button>` : ''}`;
-  } else {
+  } else if (atab === 'd') {
     const t = ADM.filter(r => r.state.del).length, op = ADM.filter(admOld).length;
     body = `<div class="card"><h2>Überblick</h2><p>${ADM.length} Einträge insgesamt, ${ADM.filter(r => admKind(r) === 'm').length} Matches, ${ADM.filter(r => admKind(r) === 't').length} Trainings, ${t} im Papierkorb.</p></div>
     <div class="card"><h2>Automatisch aufräumen</h2><p class="mute sm">Offene Matches ohne neuen Wurf kommen nach dieser Zeit in den Papierkorb. Beendete Matches bleiben immer. Sobald jemand weiterspielt, ist das Match wieder normal.</p>
@@ -851,8 +926,12 @@ function admView() {
     <button class="ghost" style="width:100%;margin-top:8px;color:var(--red)" onclick="admPurge(ADM.filter(r => r.state.del).map(r => r.id))">Papierkorb endgültig leeren (${t})</button></div>
     <div class="card"><h2>Sicherung</h2><p class="mute sm">Speichert alle Matches und Trainingseinheiten als Datei.</p><button class="ghost" style="width:100%" onclick="admExport()">Alles als Datei sichern</button></div>
     <div class="card"><h2>Endgültig löschen erlauben</h2><p class="mute sm">Damit „Endgültig löschen“ funktioniert, muss Supabase das Löschen erlauben. Öffne in Supabase den <b>SQL Editor</b>, füge das ein und klicke auf <b>Run</b>:</p>
-    <pre style="white-space:pre-wrap;user-select:all;background:var(--bg);padding:10px;border-radius:8px;font-size:.8rem">create policy "matches delete" on public.matches for delete using (true);</pre></div>`;
-  }
+    <pre style="white-space:pre-wrap;user-select:all;background:var(--bg);padding:10px;border-radius:8px;font-size:.8rem">create policy "matches delete" on public.matches for delete using (true);</pre></div>
+    <div class="card"><h2>Sicheres Eintragen</h2><p class="mute sm">Verhindert, dass Würfe verloren gehen, wenn zwei Geräte gleichzeitig eintragen. Einmal in Supabase unter <b>SQL Editor</b> einfügen und <b>Run</b> klicken. Ohne diesen Schritt läuft alles wie bisher.</p>
+    <pre id="rpcsql" style="white-space:pre-wrap;user-select:all;background:var(--bg);padding:10px;border-radius:8px;font-size:.72rem;max-height:220px;overflow:auto">${esc(RPC_SQL)}</pre>
+    <div class="seg" style="margin-top:8px"><button class="ghost" onclick="admRpcCopy()">SQL kopieren</button><button class="ghost" onclick="admRpcTest()">Funktion testen</button></div>
+    <p class="mute sm" id="rpcst" style="margin-top:8px">Status: ${noRpc ? 'nicht eingerichtet (altes Speichern aktiv)' : 'noch nicht geprüft'}</p></div>`;
+  } else body = clView();
   return `<div class="wrap">${head}${body}</div>`;
 }
 function adelPanel() {
@@ -1143,7 +1222,7 @@ async function openMatch(id, sec = null) {
   match = { id, st: data.state }; heard = data.state.ev.length; mult = 1; watch = !sec; psec = sec || ''; shareOpen = false; showPc = false;
   history.replaceState(null, '', '?m=' + id + (sec ? '&p=' + sec : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
-    p => { match.st = p.new.state; render(); }).subscribe();
+    p => { const n = p.new.state; if (pend > 0 || (n.v != null && n.v < (match.st.v || 0))) return; match.st = n; render(); }).subscribe();
   camJoin(id); wake(); clipStart(); render();
 }
 async function joinCode() {
@@ -1166,6 +1245,45 @@ function leave(keep) {
   channel = null; match = null; camLeave(); unwake(); clipStop();
   if (!keep) { view = 'home'; loadKnown(); history.replaceState(null, '', location.pathname); render(); }
 }
+// Sicheres Eintragen: jeder Wurf wird einzeln und atomar in der Datenbank angehängt (Funktion ev_push/ev_pop).
+// Fehlt die Funktion in Supabase, wird wie früher der ganze Spielstand gespeichert.
+let sq = [], sqRun = false, pend = 0, noRpc = false;
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const wait = ms => new Promise(f => setTimeout(f, ms));
+function sync(op) {
+  if (noRpc) return save();
+  pend++; sq.push(op);
+  if (!sqRun) sqPump();
+}
+async function sqPump() {
+  sqRun = true;
+  while (sq.length) {
+    const op = sq[0]; let r = null, tries = 0, fail = false;
+    for (;;) {
+      try { r = op.k === 'push' ? await db.rpc('ev_push', { p_id: op.m, p_e: op.e, p_op: op.id }) : await db.rpc('ev_pop', { p_id: op.m }); }
+      catch (e) { r = { error: { message: String(e) } }; }
+      if (!r.error) break;
+      if (r.error.code === 'PGRST202' || r.error.code === '42883' || r.status === 404) { noRpc = true; break; }
+      if (++tries >= 4) { fail = true; break; }
+      await wait(800 * tries);
+    }
+    if (noRpc || fail) {
+      sq = []; pend = 0;
+      if (match && match.id === op.m) { if (fail) toast('Verbindung schlecht, speichere erneut'); await save(); }
+      break;
+    }
+    sq.shift(); pend--;
+    const s = r.data;
+    if (pend === 0 && match && match.id === op.m && s && s.cfg && !(s.v < (match.st.v || 0))) {
+      const same = JSON.stringify(s.ev) === JSON.stringify(match.st.ev);
+      match.st = s;
+      const f = calc(s.cfg, s.ev).winner !== null;
+      if (f !== match.fin) { match.fin = f; db.from('matches').update({ finished: f }).eq('id', op.m).then(() => {}); }
+      if (!same) render();
+    }
+  }
+  sqRun = false;
+}
 async function save() {
   delete match.st.del; delete match.st.auto; // neue Aktivität holt ein aufgeräumtes Match zurück
   const { error } = await db.from('matches').update({ state: match.st, finished: calc(match.st.cfg, match.st.ev).winner !== null, updated_at: new Date().toISOString() }).eq('id', match.id);
@@ -1185,13 +1303,13 @@ function dart(x) {
   st.ev.push(e); mult = 1;
   const c2 = calc(st.cfg, st.ev), v = nVis(c2) > nVis(c) ? c2.P[c.turn].v.at(-1) : null;
   if (v && v.bust) toast('Bust'); else if (v && v.win) toast(c2.winner !== null ? 'Match gewonnen' : 'Leg gewonnen');
-  render(); save();
+  render(); sync({ k: 'push', e, id: uid(), m: match.id });
 }
 function undo() {
   if (TS) return tundo();
   if (watch) return;
   if (!match.st.ev.length) return toast('Nichts zum Zurücknehmen');
-  match.st.ev.pop(); render(); save();
+  match.st.ev.pop(); render(); sync({ k: 'pop', m: match.id });
 }
 function rematch() {
   const cfg = match.st.cfg, ps = [...cfg.players], os = cfg.outs ? [...cfg.outs] : ps.map(() => 'double');
