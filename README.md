@@ -14,7 +14,7 @@ Der Code ist von Claude geschrieben und wahrscheinlich nicht zu 100 % der beste.
 | `aufnehmen.html` | Seite zum Aufnehmen der eigenen Stimme (`/aufnehmen.html`, Zusatz-Paket: `/aufnehmen.html?zusatz`) |
 | `ton/` | Sprachaufnahmen: `sprache.wav/json` und Zusatz-Paket `sprache2.wav/json` |
 | `icons/` | App-Symbole |
-| `docs/` | Anleitungen (Update, Kamera, Training) |
+| `docs/` | `DOKUMENTATION.md` (komplette Projektdokumentation) und Anleitungen (Update, Kamera, Training) |
 
 ## Neue Sprachaufnahmen einspielen
 Die Aufnahme-Seite erzeugt `sprache.wav` und `sprache.json` (bzw. `sprache2.*`). Diese Dateien in den Ordner `ton/` hochladen und die alten ersetzen.

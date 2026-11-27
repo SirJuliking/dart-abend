@@ -22,4 +22,4 @@ Die Datenbank bleibt unverändert, du musst in Supabase nichts tun.
 
 ## Gut zu wissen
 - Alte Matches aus Version 1 lassen sich nicht mehr öffnen und zählen nicht fürs Ranking.
-- Trägt nur eine Person die Würfe ein, gibt es keine Probleme. Wenn zwei gleichzeitig tippen, können Würfe verloren gehen.
+- Würfe von zwei Geräten gleichzeitig gehen nicht mehr verloren, sobald das SQL „Sicheres Eintragen" (Admin → Daten) einmal in Supabase ausgeführt wurde. Siehe DOKUMENTATION.md.
