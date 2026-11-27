@@ -116,7 +116,7 @@ Datei auf GitHub ändern oder hochladen und „Commit". Vercel veröffentlicht a
 - **Endscreen:** Schnitt, Höchstwurf, 100+/140+/180, Checkout-Quote, First-9-Schnitt u. a.
 - **Ranking** sortierbar, mit Verlaufsdiagramm.
 - **Profil** je Spieler: Kennzahlen, Dartscheibe mit Trefferverteilung (Heatmap) und **Tabellenansicht**, Duelle gegeneinander, Matchverlauf.
-- Spieler oder Matches lassen sich im Ranking ausblenden und wieder einblenden.
+- Spieler lassen sich im Ranking ausblenden (ihre Matches zählen für die Gegner weiter), einzelne Matches im Verlauf separat; alles lässt sich wieder einblenden.
 
 ### Training
 Modi: Finishing, Scoring, Zielfeld, Legs. Werte nur im Profil-Reiter „Training", nicht im Ranking.

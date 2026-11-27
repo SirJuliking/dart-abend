@@ -362,9 +362,8 @@ async function showStats() {
 function hidePlayer(k) {
   const n = SC.list.find(s => s.n.toLowerCase() === k).n;
   if (!HID.hp.includes(k)) HID.hp.push(k);
-  if (confirm(`${n} ist jetzt im Ranking ausgeblendet.\nSollen auch alle Matches mit ${n} aus den Statistiken der anderen herausgerechnet werden?`))
-    VIS.forEach(r => { if (r.state.cfg.players.some(x => x.trim().toLowerCase() === k) && !HID.hm.includes(r.id)) HID.hm.push(r.id); });
   recompute(); saveHid(); render();
+  toast(n + ' ausgeblendet, die Matches zählen für die anderen weiter');
 }
 function showPlayerAt(i) { HID.hp.splice(i, 1); recompute(); saveHid(); render(); }
 function toggleMatch(id) { const i = HID.hm.indexOf(id); if (i < 0) HID.hm.push(id); else HID.hm.splice(i, 1); recompute(); saveHid(); render(); }
@@ -871,6 +870,7 @@ async function admRpcTest() {
 let clTab = 'web';
 const CHANGELOG = [
   { d: '27.11.2026', web: [
+    'Spieler im Ranking ausblenden betrifft nur diesen Spieler; seine Matches bleiben in den Statistiken der Gegner (einzelne Matches lassen sich weiter im Verlauf ausblenden)',
     'Sicheres Eintragen: gleichzeitig eingetragene Würfe von zwei Geräten gehen nicht mehr verloren (braucht einmalig das SQL im Admin-Bereich unter Daten)',
     'Offene Matches ohne neuen Wurf wandern automatisch in den Papierkorb (einstellbar, Standard 10 Minuten)',
     'Einstellungen sind in Reiter aufgeteilt: Ton, Anzeige, Kamera, Mehr',
