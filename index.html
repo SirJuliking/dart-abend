@@ -291,13 +291,13 @@ function endView(c) {
 const PAL = ['#3DAA74', '#E4483D', '#F2C14E', '#5AA9E6', '#B08BDB', '#F28C4E', '#4FD1C5', '#E879A6'];
 let TS = null, TRN = [], pfrom = 'stats', ptab = 'm', tname = '', tkind = 'fin', tvar = 'free', tn = 10, trange = 170, tgoal = 0, tfield = 'T20', tstart = 501, tlegs = 3, trule = 'double', tpool = {};
 try { tname = localStorage.getItem('dn') || ''; } catch (e) {}
-let HID = { hp: [], hm: [], hs: [] }, ROWS = [], VIS = [], SC = null, known = [], knownAll = [], chipEdit = false, edit = false, pk = '', duelA = '', duelB = '', histF = '', RK = [];
+let HID = { hp: [], hm: [], hs: [], ac: 10 }, ROWS = [], VIS = [], SC = null, known = [], knownAll = [], chipEdit = false, edit = false, pk = '', duelA = '', duelB = '', histF = '', RK = [];
 const colorOf = n => PAL[SC.list.map(s => s.n.toLowerCase()).sort().indexOf(n.toLowerCase()) % PAL.length];
 const pc0 = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
 const dt = x => { const d = new Date(x); return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); };
 async function loadHid() {
   const { data } = await db.from('matches').select('state').eq('id', '_CONFIG').maybeSingle();
-  if (data && data.state) HID = { hp: data.state.hp || [], hm: data.state.hm || [], hs: data.state.hs || [] };
+  if (data && data.state) HID = { hp: data.state.hp || [], hm: data.state.hm || [], hs: data.state.hs || [], ac: data.state.ac ?? 10 };
 }
 async function saveHid() {
   const { error } = await db.from('matches').upsert({ id: '_CONFIG', state: HID, finished: false });
@@ -838,12 +838,14 @@ function admView() {
       const bt = r.state.del
         ? `<button class="ghost" onclick="admDel('${r.id}',false)">Wiederherstellen</button><button class="ghost" style="color:var(--red)" onclick="admPurge(['${r.id}'])">Endgültig löschen</button>`
         : `${k === 'm' ? `<button class="ghost" onclick="aeOpen('${r.id}')">Bearbeiten</button>` : ''}<button class="ghost" style="color:var(--red)" onclick="admDel('${r.id}',true)">Löschen</button>`;
-      return `<div class="card"><div class="mute sm">${dt(r.created_at)}, ${st}, ${n} Darts, ${r.id}</div><b>${admTitle(r)}</b><div class="seg" style="margin-top:8px">${bt}</div></div>`;
+      return `<div class="card"><div class="mute sm">${dt(r.created_at)}, ${st}${r.state.auto ? ' (automatisch)' : ''}, ${n} Darts, ${r.id}</div><b>${admTitle(r)}</b><div class="seg" style="margin-top:8px">${bt}</div></div>`;
     }).join('')}
     ${rows.length > amore ? `<button class="ghost" style="width:100%" onclick="amore+=60;render()">Mehr anzeigen</button>` : ''}`;
   } else {
     const t = ADM.filter(r => r.state.del).length, op = ADM.filter(admOld).length;
     body = `<div class="card"><h2>Überblick</h2><p>${ADM.length} Einträge insgesamt, ${ADM.filter(r => admKind(r) === 'm').length} Matches, ${ADM.filter(r => admKind(r) === 't').length} Trainings, ${t} im Papierkorb.</p></div>
+    <div class="card"><h2>Automatisch aufräumen</h2><p class="mute sm">Offene Matches ohne neuen Wurf kommen nach dieser Zeit in den Papierkorb. Beendete Matches bleiben immer. Sobald jemand weiterspielt, ist das Match wieder normal.</p>
+    <select class="in" aria-label="Automatisch aufräumen" onchange="admAc(this.value)">${[[0, 'Aus'], [10, 'Nach 10 Minuten'], [30, 'Nach 30 Minuten'], [60, 'Nach 1 Stunde'], [180, 'Nach 3 Stunden']].map(([v, l]) => `<option value="${v}" ${HID.ac === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="card"><h2>Aufräumen</h2>
     <button class="ghost" style="width:100%" onclick="admCleanOpen()">Offene Matches älter als 6 Stunden in den Papierkorb (${op})</button>
     <button class="ghost" style="width:100%;margin-top:8px;color:var(--red)" onclick="admPurge(ADM.filter(r => r.state.del).map(r => r.id))">Papierkorb endgültig leeren (${t})</button></div>
@@ -962,6 +964,22 @@ function aeView() {
   ${sets}${res}<div class="card"><h2>Würfe</h2>${visits}${ign}<button class="ghost" style="width:100%;margin-top:10px" onclick="AE.sel='new';render()">Dart am Ende hinzufügen</button></div>${picker}
   <button class="main" onclick="aeSave()">Speichern</button></div>`;
 }
+// Offene Matches ohne Aktivität kommen nach HID.ac Minuten in den Papierkorb (0 = aus). Läuft in jedem geöffneten Browser.
+async function autoClean() {
+  const min = HID.ac; if (!(min > 0)) return;
+  const cut = new Date(Date.now() - min * 60000).toISOString();
+  const { data, error } = await db.from('matches').select('id,state,updated_at').eq('finished', false).neq('id', '_CONFIG').not('id', 'like', 'TR-%').lt('updated_at', cut).limit(50);
+  if (error || !data) return;
+  let n = 0;
+  for (const r of data) {
+    if (!r.state || !r.state.cfg || r.state.del || (match && match.id === r.id)) continue;
+    // nur schreiben, wenn sich das Match seit dem Lesen nicht verändert hat
+    const { data: u } = await db.from('matches').update({ state: { ...r.state, del: 1, auto: 1 } }).eq('id', r.id).eq('updated_at', r.updated_at).select('id');
+    if (u && u.length) n++;
+  }
+  if (n) { loadKnown(); if (adm && view === 'admin') { await admLoad(); render(); } }
+}
+async function admAc(v) { await loadHid(); HID.ac = +v; await saveHid(); toast(+v ? 'Aufräumen nach ' + v + ' Minuten' : 'Automatisches Aufräumen aus'); autoClean(); render(); }
 const admOld = r => admKind(r) === 'm' && !r.finished && !r.state.del && Date.now() - new Date(r.created_at) > 6 * 3600e3;
 async function admWrite(r, st) {
   const { error } = await db.from('matches').update({ state: st }).eq('id', r.id);
@@ -1149,6 +1167,7 @@ function leave(keep) {
   if (!keep) { view = 'home'; loadKnown(); history.replaceState(null, '', location.pathname); render(); }
 }
 async function save() {
+  delete match.st.del; delete match.st.auto; // neue Aktivität holt ein aufgeräumtes Match zurück
   const { error } = await db.from('matches').update({ state: match.st, finished: calc(match.st.cfg, match.st.ev).winner !== null, updated_at: new Date().toISOString() }).eq('id', match.id);
   if (error) toast('Speichern fehlgeschlagen');
 }
@@ -1642,7 +1661,7 @@ async function saveClip(k) {
 
 // ---------- Start ----------
 render();
-loadKnown();
+loadKnown().then(autoClean); setInterval(autoClean, 120000);
 const q0 = new URLSearchParams(location.search), m0 = q0.get('m');
 if (m0) openMatch(m0.toUpperCase(), q0.get('p'));
 </script>
