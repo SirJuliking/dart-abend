@@ -304,10 +304,10 @@ async function saveHid() {
 }
 async function loadKnown() {
   await loadHid();
-  let { data, error } = await db.from('matches').select('cfg:state->cfg').neq('id', '_CONFIG').not('id', 'like', 'TR-%').order('created_at', { ascending: false }).limit(300);
-  if (error) { const r = await db.from('matches').select('state').neq('id', '_CONFIG').not('id', 'like', 'TR-%').limit(300); data = (r.data || []).map(x => ({ cfg: x.state.cfg })); }
+  let { data, error } = await db.from('matches').select('cfg:state->cfg,del:state->del').neq('id', '_CONFIG').not('id', 'like', 'TR-%').order('created_at', { ascending: false }).limit(300);
+  if (error) { const r = await db.from('matches').select('state').neq('id', '_CONFIG').not('id', 'like', 'TR-%').limit(300); data = (r.data || []).map(x => ({ cfg: x.state.cfg, del: x.state.del })); }
   const cnt = {};
-  (data || []).forEach(x => x.cfg && x.cfg.players && x.cfg.players.forEach(n => { const k = n.trim(); cnt[k] = (cnt[k] || 0) + 1; }));
+  (data || []).forEach(x => !x.del && x.cfg && x.cfg.players && x.cfg.players.forEach(n => { const k = n.trim(); cnt[k] = (cnt[k] || 0) + 1; }));
   const old = JSON.stringify(known);
   knownAll = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]); refreshKnown();
   if (!match && ['home', 'new', 'tsetup'].includes(view) && old !== JSON.stringify(known) && document.activeElement.tagName !== 'INPUT') render();
@@ -351,7 +351,7 @@ function nav(v) { view = v; render(); scrollTo(0, 0); }
 async function loadStatsData() {
   const [r] = await Promise.all([db.from('matches').select('id,created_at,state').eq('finished', true).order('created_at'), loadHid()]);
   if (r.error) { toast('Statistiken konnten nicht geladen werden'); return false; }
-  ROWS = r.data; recompute(); return true;
+  ROWS = r.data.filter(x => !x.state.del); recompute(); return true;
 }
 async function showStats() {
   const [ok] = await Promise.all([loadStatsData(), loadTrain()]);
@@ -647,7 +647,7 @@ async function loadTrain() {
   const { data } = await db.from('matches').select('id,created_at,state').like('id', 'TR-%').order('created_at').limit(1000);
   TRN = data || [];
 }
-const trainAll = k => TRN.filter(r => r.state.tr && r.state.tr.ev.length && r.state.tr.name.trim().toLowerCase() === k);
+const trainAll = k => TRN.filter(r => r.state.tr && !r.state.del && r.state.tr.ev.length && r.state.tr.name.trim().toLowerCase() === k);
 const trainOf = k => trainAll(k).filter(r => !r.state.tr.x);
 async function trainRestore() {
   const rows = trainAll(pk).filter(r => r.state.tr.x);
@@ -777,6 +777,155 @@ function trainTab(rows) {
   return out + `<button class="ghost" style="width:100%" onclick="trainReset()">Trainingsdaten ausblenden</button>`;
 }
 
+// ---------- Admin ----------
+// Das Passwort schützt nur vor Versehen (die Prüfung läuft im Browser). Es ist kein echter Schutz der Datenbank.
+const ADMH = 'ca1f689bb29e95651f958ae23d5f35dc651e2ee3fbed7f64afb159b7d7fb7eb7';
+let adm = false, atab = 'm', af = 'all', ADM = [], ADMP = [], amore = 60;
+async function admLogin() {
+  const v = ($('#apw') || {}).value || '';
+  if (await sha('darts-admin:' + v) !== ADMH) return toast('Falsches Passwort');
+  adm = true; showSet = false; atab = 'm'; af = 'all'; amore = 60;
+  await admLoad(); nav('admin');
+}
+function admLogout() { adm = false; ADM = []; showSet = false; if (view === 'admin') view = 'home'; render(); }
+async function admLoad() {
+  const { data, error } = await db.from('matches').select('id,created_at,finished,state').neq('id', '_CONFIG').order('created_at', { ascending: false }).limit(1500);
+  if (error) return toast('Laden fehlgeschlagen');
+  ADM = data || [];
+}
+async function admAfter() { await Promise.all([loadStatsData(), loadTrain()]); loadKnown(); render(); }
+const admKind = r => r.state.tr ? 't' : r.state.cfg ? 'm' : 'o';
+function admTitle(r) {
+  const s = r.state;
+  if (s.tr) return `Training: ${TK[s.tr.kind] || esc(s.tr.kind)}, ${esc(s.tr.name)}`;
+  if (!s.cfg) return 'Altes Match (alte Version)';
+  const c = calc(s.cfg, s.ev || []);
+  return esc(s.cfg.players.join(' gegen ')) + ', ' + s.cfg.start + (c.winner !== null ? ', Sieger: ' + esc(c.P[c.winner].name) : '');
+}
+function admPlayers() {
+  const o = {};
+  ADM.forEach(r => {
+    if (r.state.del) return;
+    const add = (n, k) => { const t = String(n).trim(), l = t.toLowerCase(); if (!l) return; (o[l] ??= { n: t, m: 0, t: 0 })[k]++; };
+    if (r.state.cfg) r.state.cfg.players.forEach(n => add(n, 'm'));
+    if (r.state.tr) add(r.state.tr.name, 't');
+  });
+  return Object.values(o).sort((a, b) => b.m + b.t - (a.m + a.t) || a.n.localeCompare(b.n));
+}
+function admFilter() {
+  return ADM.filter(r => af === 'trash' ? r.state.del : !r.state.del && (af === 'all' || (af === 'done' && admKind(r) !== 't' && r.finished) || (af === 'open' && admKind(r) !== 't' && !r.finished) || (af === 'tr' && admKind(r) === 't')));
+}
+function admView() {
+  const tab = (k, l) => `<button class="${atab === k ? 'on' : ''}" onclick="atab='${k}';render()">${l}</button>`;
+  const head = `<div class="top"><button class="ghost" onclick="nav('home')">‹ Start</button><span class="mute">Admin-Modus</span><button class="ghost" onclick="admLogout()">Abmelden</button></div><h1>Admin</h1>
+  <div class="seg">${tab('p', 'Spieler')}${tab('m', 'Matches')}${tab('d', 'Daten')}</div>`;
+  let body = '';
+  if (atab === 'p') {
+    ADMP = admPlayers();
+    body = `<p class="mute sm">Ändert den Namen in allen Matches und Trainingseinheiten. Gibst du einen schon vorhandenen Namen ein, werden beide zusammengeführt.</p>
+    <div class="card">${ADMP.length ? ADMP.map((p, i) => `<div class="srow"><span><b>${esc(p.n)}</b><br><span class="mute sm">${p.m} Matches, ${p.t} Training</span></span><button class="ghost" onclick="admRename(${i})">Umbenennen</button></div>`).join('') : '<p class="mute">Keine Spieler gefunden.</p>'}</div>`;
+  } else if (atab === 'm') {
+    const fl = [['all', 'Alle'], ['done', 'Beendet'], ['open', 'Offen'], ['tr', 'Training'], ['trash', 'Papierkorb']];
+    const rows = admFilter();
+    body = `<div class="chips">${fl.map(([k, l]) => `<button class="chip ${af === k ? 'on' : ''}" onclick="af='${k}';amore=60;render()">${l}</button>`).join('')}</div>
+    <p class="mute sm">${rows.length} Einträge${af === 'trash' ? '. Hier kannst du Einträge wiederherstellen oder endgültig löschen.' : '. Löschen legt sie zuerst nur in den Papierkorb.'}</p>
+    ${rows.slice(0, amore).map(r => {
+      const k = admKind(r), n = (r.state.ev || (r.state.tr && r.state.tr.ev) || []).length;
+      const st = r.state.del ? 'Papierkorb' : k === 't' ? 'Training' : r.finished ? 'beendet' : 'offen';
+      const bt = r.state.del
+        ? `<button class="ghost" onclick="admDel('${r.id}',false)">Wiederherstellen</button><button class="ghost" style="color:var(--red)" onclick="admPurge(['${r.id}'])">Endgültig löschen</button>`
+        : `${k === 'm' ? `<button class="ghost" onclick="admNames('${r.id}')">Namen ändern</button>` : ''}<button class="ghost" style="color:var(--red)" onclick="admDel('${r.id}',true)">Löschen</button>`;
+      return `<div class="card"><div class="mute sm">${dt(r.created_at)}, ${st}, ${n} Darts, ${r.id}</div><b>${admTitle(r)}</b><div class="seg" style="margin-top:8px">${bt}</div></div>`;
+    }).join('')}
+    ${rows.length > amore ? `<button class="ghost" style="width:100%" onclick="amore+=60;render()">Mehr anzeigen</button>` : ''}`;
+  } else {
+    const t = ADM.filter(r => r.state.del).length, op = ADM.filter(admOld).length;
+    body = `<div class="card"><h2>Überblick</h2><p>${ADM.length} Einträge insgesamt, ${ADM.filter(r => admKind(r) === 'm').length} Matches, ${ADM.filter(r => admKind(r) === 't').length} Trainings, ${t} im Papierkorb.</p></div>
+    <div class="card"><h2>Aufräumen</h2>
+    <button class="ghost" style="width:100%" onclick="admCleanOpen()">Offene Matches älter als 6 Stunden in den Papierkorb (${op})</button>
+    <button class="ghost" style="width:100%;margin-top:8px;color:var(--red)" onclick="admPurge(ADM.filter(r => r.state.del).map(r => r.id))">Papierkorb endgültig leeren (${t})</button></div>
+    <div class="card"><h2>Sicherung</h2><p class="mute sm">Speichert alle Matches und Trainingseinheiten als Datei.</p><button class="ghost" style="width:100%" onclick="admExport()">Alles als Datei sichern</button></div>
+    <div class="card"><h2>Endgültig löschen erlauben</h2><p class="mute sm">Damit „Endgültig löschen“ funktioniert, muss Supabase das Löschen erlauben. Öffne in Supabase den <b>SQL Editor</b>, füge das ein und klicke auf <b>Run</b>:</p>
+    <pre style="white-space:pre-wrap;user-select:all;background:var(--bg);padding:10px;border-radius:8px;font-size:.8rem">create policy "matches delete" on public.matches for delete using (true);</pre></div>`;
+  }
+  return `<div class="wrap">${head}${body}</div>`;
+}
+const admOld = r => admKind(r) === 'm' && !r.finished && !r.state.del && Date.now() - new Date(r.created_at) > 6 * 3600e3;
+async function admWrite(r, st) {
+  const { error } = await db.from('matches').update({ state: st }).eq('id', r.id);
+  if (error) return false;
+  r.state = st; return true;
+}
+async function admDel(id, on) {
+  const r = ADM.find(x => x.id === id); if (!r) return;
+  if (on && !confirm('In den Papierkorb legen? Du kannst es dort wiederherstellen.')) return;
+  const st = { ...r.state }; if (on) st.del = 1; else delete st.del;
+  if (!await admWrite(r, st)) return toast('Speichern fehlgeschlagen');
+  toast(on ? 'In den Papierkorb gelegt' : 'Wiederhergestellt'); await admAfter();
+}
+async function admCleanOpen() {
+  const rs = ADM.filter(admOld);
+  if (!rs.length) return toast('Nichts zum Aufräumen');
+  if (!confirm(rs.length + ' offene Matches in den Papierkorb legen?')) return;
+  let bad = 0;
+  for (const r of rs) if (!await admWrite(r, { ...r.state, del: 1 })) bad++;
+  toast(bad ? bad + ' konnten nicht gespeichert werden' : rs.length + ' in den Papierkorb gelegt'); await admAfter();
+}
+async function admPurge(ids) {
+  if (!ids.length) return toast('Nichts zu löschen');
+  if (!confirm(ids.length + ' Einträge endgültig löschen? Das geht nicht rückgängig.')) return;
+  const { data, error } = await db.from('matches').delete().in('id', ids).select('id');
+  const gone = (data || []).map(x => x.id);
+  ADM = ADM.filter(r => !gone.includes(r.id));
+  if (error || gone.length < ids.length) { alert('Nur ' + gone.length + ' von ' + ids.length + ' wurden gelöscht. Wahrscheinlich ist Löschen in Supabase noch nicht erlaubt. Die Anleitung steht im Reiter „Daten“.'); }
+  else toast(gone.length + ' endgültig gelöscht');
+  await admAfter();
+}
+async function admNames(id) {
+  const r = ADM.find(x => x.id === id); if (!r || !r.state.cfg) return;
+  const old = r.state.cfg.players, nn = [];
+  for (let i = 0; i < old.length; i++) {
+    const v = prompt(`Name von Spieler ${i + 1}:`, old[i]);
+    if (v === null) return;
+    nn.push(v.trim().slice(0, 20));
+  }
+  if (nn.some(n => !n)) return toast('Namen dürfen nicht leer sein');
+  if (new Set(nn.map(n => n.toLowerCase())).size < nn.length) return toast('Die Namen müssen verschieden sein');
+  if (nn.every((n, i) => n === old[i])) return;
+  if (!await admWrite(r, { ...r.state, cfg: { ...r.state.cfg, players: nn } })) return toast('Speichern fehlgeschlagen');
+  toast('Namen geändert'); await admAfter();
+}
+async function admRename(i) {
+  const p = ADMP[i]; if (!p) return;
+  const v = prompt(`Neuer Name für ${p.n}:`, p.n);
+  if (v === null) return;
+  const nv = v.trim().slice(0, 20); if (!nv || nv === p.n) return;
+  const ol = p.n.toLowerCase(), nl = nv.toLowerCase(), isP = (x, l) => String(x).trim().toLowerCase() === l;
+  const hit = ADM.filter(r => (r.state.cfg && r.state.cfg.players.some(x => isP(x, ol))) || (r.state.tr && isP(r.state.tr.name, ol)));
+  if (ol !== nl && hit.some(r => r.state.cfg && r.state.cfg.players.some(x => isP(x, nl))))
+    return alert(`Zusammenführen geht nicht: In manchen Matches spielen ${p.n} und ${nv} gegeneinander. Ändere zuerst diese Matches im Reiter „Matches“ mit „Namen ändern“.`);
+  const merge = ol !== nl && ADMP.some(x => x.n.toLowerCase() === nl);
+  if (!confirm(`${p.n} in ${nv} ${merge ? 'umbenennen und mit dem vorhandenen Spieler zusammenführen' : 'umbenennen'}?\n${hit.length} Einträge werden geändert.`)) return;
+  let bad = 0;
+  for (let k = 0; k < hit.length; k += 8) await Promise.all(hit.slice(k, k + 8).map(async r => {
+    const st = { ...r.state };
+    if (st.cfg) st.cfg = { ...st.cfg, players: st.cfg.players.map(x => isP(x, ol) ? nv : x) };
+    if (st.tr) st.tr = { ...st.tr, name: nv };
+    if (!await admWrite(r, st)) bad++;
+  }));
+  await loadHid();
+  const fix = a => [...new Set((a || []).map(x => x === ol ? nl : x))];
+  const hh = JSON.stringify(HID);
+  HID.hp = fix(HID.hp); HID.hs = fix(HID.hs);
+  if (JSON.stringify(HID) !== hh) saveHid();
+  toast(bad ? bad + ' Einträge konnten nicht geändert werden' : 'Name geändert'); await admAfter();
+}
+function admExport() {
+  const blob = new Blob([JSON.stringify({ exportiert: new Date().toISOString(), ausgeblendet: HID, eintraege: ADM }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'dart-abend-sicherung-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 // ---------- Duelle und Verlauf ----------
 function duel(a, b) {
   const rows = VIS.filter(r => { const ks = r.state.cfg.players.map(x => x.trim().toLowerCase()); return ks.includes(a) && ks.includes(b); });
@@ -835,7 +984,7 @@ function throwLog(c) {
   return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
 }
 
-function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : ''); }
+function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'admin' && adm ? admView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -871,6 +1020,7 @@ async function create(list = names, cfg0 = { start, legs: legsW, sets: setsW }, 
 async function openMatch(id, sec = null) {
   const { data, error } = await db.from('matches').select('state').eq('id', id).maybeSingle();
   if (error || !data) return toast('Match nicht gefunden');
+  if (data.state.del) return toast('Match nicht gefunden');
   if (!data.state.cfg) return toast('Dieses Match stammt aus der alten Version');
   if (sec && data.state.ph && await sha(sec) !== data.state.ph) return toast('Spielercode stimmt nicht');
   leave(true);
@@ -1069,6 +1219,8 @@ function setPanel() {
   <p class="mute sm">Nimmt die gezeigte Kamera im Hintergrund auf. Auf schwächeren Geräten bitte ausschalten.</p>
   <h3>Gerät</h3>${cb('vib', 'Vibration beim Eintragen (nur Android)')}
   <div class="srow"><span>Kamera</span><select onchange="setS('cam', this.value)">${op('cam', 'environment', 'Rückkamera')}${op('cam', 'user', 'Frontkamera')}</select></div>
+  <h3>Admin</h3>${adm ? `<button class="main" onclick="showSet=false;nav('admin')">Admin-Bereich öffnen</button><button class="ghost" style="width:100%;margin-top:8px" onclick="admLogout()">Abmelden</button>`
+    : `<div class="srow"><input class="in" id="apw" type="password" inputmode="numeric" placeholder="Passwort" autocomplete="off" style="margin:0" onkeydown="if(event.key==='Enter')admLogin()"><button class="ghost" onclick="admLogin()">Öffnen</button></div>`}
   <h3>App</h3><div class="srow"><span>App aufs Handy legen</span><button class="ghost" onclick="installApp()">Installieren</button></div>
   <p class="mute sm">iPhone: In Safari auf Teilen tippen, dann „Zum Home-Bildschirm“. Android: Browser-Menü, dann „App installieren“.</p>
   <button class="main" onclick="toggleSet()">Fertig</button></div></div>`;
