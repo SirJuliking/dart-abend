@@ -896,6 +896,9 @@ async function admRpcTest() {
 }
 let clTab = 'web';
 const CHANGELOG = [
+  { d: '28.11.2026', web: [
+    'Zurück-Geste und Zurück-Knopf des Handys gehen jetzt einen Schritt in der App zurück (Fenster schließen, Match verlassen, zum Start) statt die Seite zu verlassen; in einem laufenden Match kommt eine Nachfrage'
+  ], adm: [] },
   { d: '27.11.2026', web: [
     'Beitreten zeigt laufende Matches (zuletzt aktiv innerhalb der Aufräum-Zeit, Standard 10 Minuten); antippen = ohne Code zuschauen',
     'Neues Match neu gestaltet: Bereiche „Spieler“ und „Spiel“, „Spieler hinzufügen“ direkt unter den Namen, zusätzliche Spieler lassen sich wieder entfernen',
@@ -1249,7 +1252,7 @@ async function openMatch(id, sec = null) {
   if (sec && data.state.ph && await sha(sec) !== data.state.ph) return toast('Spielercode stimmt nicht');
   leave(true);
   match = { id, st: data.state }; heard = data.state.ev.length; mult = 1; watch = !sec; psec = sec || ''; shareOpen = false; showPc = false;
-  history.replaceState(null, '', '?m=' + id + (sec ? '&p=' + sec : ''));
+  setUrl('?m=' + id + (sec ? '&p=' + sec : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
     p => { const n = p.new.state; if (pend > 0 || (n.v != null && n.v < (match.st.v || 0))) return; match.st = n; render(); }).subscribe();
   camJoin(id); wake(); clipStart(); render();
@@ -1272,7 +1275,7 @@ async function joinCode() {
 function leave(keep) {
   if (channel) db.removeChannel(channel);
   channel = null; match = null; camLeave(); unwake(); clipStop();
-  if (!keep) { view = 'home'; loadKnown(); history.replaceState(null, '', location.pathname); render(); }
+  if (!keep) { view = 'home'; loadKnown(); setUrl(location.pathname); render(); }
 }
 // Sicheres Eintragen: jeder Wurf wird einzeln und atomar in der Datenbank angehängt (Funktion ev_push/ev_pop).
 // Fehlt die Funktion in Supabase, wird wie früher der ganze Spielstand gespeichert.
@@ -1805,6 +1808,36 @@ async function saveClip(k) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
   toast('Clip wird gespeichert');
 }
+
+// ---------- Zurück-Geste / Zurück-Knopf des Browsers ----------
+// Die App ist eine einzige Seite. Damit "Zurück" nicht gleich die Seite verlässt, liegt ein zusätzlicher
+// Verlaufseintrag bereit (erst nach der ersten Berührung, sonst überspringen Browser ihn). Zurück geht dann
+// einen Schritt in der App zurück, und der Eintrag wird wieder hingelegt. Auf dem Startbildschirm verlässt Zurück die Seite.
+let appUrl = location.href;
+function setUrl(u) { appUrl = new URL(u, location.href).href; try { history.replaceState(history.state, '', u); } catch (e) {} }
+function armBack() { try { if (!(history.state && history.state.dart)) history.pushState({ dart: 1 }, '', appUrl); } catch (e) {} }
+function goBack() {
+  if (showSet) { showSet = false; render(); return true; }
+  if (camPick) { camPick = false; render(); return true; }
+  if (adel !== null) { adel = null; render(); return true; }
+  if (match) {
+    const live = !watch && calc(match.st.cfg, match.st.ev).winner === null;
+    if (live && !confirm('Match verlassen? Mit deinem Spielercode kannst du wieder beitreten.')) return true;
+    leave(); return true;
+  }
+  if (TS) { trainLeave(); return true; }
+  if (view === 'aedit') { aeCancel(); return true; }
+  if (view === 'player') { backTo(pfrom); return true; }
+  if (view === 'hist') { backTo(histF ? 'player' : 'stats'); return true; }
+  if (view === 'duel') { backTo(pk ? 'player' : 'stats'); return true; }
+  if (view !== 'home') { nav('home'); return true; }
+  return false;
+}
+addEventListener('pointerdown', armBack, { once: true });
+addEventListener('popstate', e => {
+  if (e.state && e.state.dart) return;
+  if (goBack()) armBack(); else history.back();
+});
 
 // ---------- Start ----------
 render();

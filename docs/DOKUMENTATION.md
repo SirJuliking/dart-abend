@@ -103,6 +103,7 @@ Datei auf GitHub ändern oder hochladen und „Commit". Vercel veröffentlicht a
 - Match-Code zum Zuschauen und separater Spielercode zum Mitspielen. Mehrere Geräte können eintragen.
 - Zuschauer sehen live mit (nur lesen).
 - Bildschirm bleibt an (Wake Lock), Vibration optional.
+- Zurück-Geste und Zurück-Knopf des Browsers gehen einen Schritt in der App zurück (Fenster schließen, Match verlassen mit Nachfrage, zum Start). Technik: ein zusätzlicher Verlaufseintrag, der nach der ersten Berührung angelegt und nach jedem Zurück neu gesetzt wird; auf dem Startbildschirm verlässt Zurück die Seite.
 
 ### Live-Kamera
 - Kamera starten, Zoom (optisch oder digital), zwei Kameras gleichzeitig.
