@@ -116,7 +116,7 @@ Datei auf GitHub ändern oder hochladen und „Commit". Vercel veröffentlicht a
 
 ### Statistik
 - **Endscreen:** Schnitt, Höchstwurf, 100+/140+/180, Checkout-Quote, First-9-Schnitt u. a.
-- **Ranking** sortierbar, mit Verlaufsdiagramm.
+- **Ranking** sortierbar, mit Verlaufsdiagramm (Punkt antippen oder mit der Maus darüberfahren zeigt Name, Average und Matchnummer).
 - **Profil** je Spieler: Kennzahlen, Dartscheibe mit Trefferverteilung (Heatmap) und **Tabellenansicht**, Duelle gegeneinander, Matchverlauf.
 - Spieler lassen sich im Ranking ausblenden (ihre Matches zählen für die Gegner weiter), einzelne Matches im Verlauf separat; alles lässt sich wieder einblenden.
 
