@@ -103,6 +103,8 @@ Datei auf GitHub ändern oder hochladen und „Commit". Vercel veröffentlicht a
 - Match-Code zum Zuschauen und separater Spielercode zum Mitspielen. Mehrere Geräte können eintragen.
 - Zuschauer sehen live mit (nur lesen).
 - Bildschirm bleibt an (Wake Lock), Vibration optional.
+- **Checkout-Hilfe** (Einstellung „Checkout anzeigen"): Bei Double Out kommt der Weg aus einer üblichen Checkout-Tabelle (`CHT` in `index.html`, 41 bis 170, z. B. 141 = T20 T19 D12). Reste bis 40 spielen auf das beste erreichbare Doppel (Rangfolge `DR`: D20, D16, D10, D8 …). Mit weniger als drei Darts übrig wird nur ein Weg gezeigt, der in die verbleibenden Darts passt. Für Master und Single Out gilt weiter die einfache Suche (`routeAny`).
+- **Chat im Match:** Knopf links unten (💬), Fenster mit Namensfeld und Nachricht. Nachrichten laufen live über einen Supabase-Broadcast-Kanal `chat<Match-ID>`, nichts wird gespeichert; wer später beitritt, sieht frühere Nachrichten nicht. Zuschauer können schreiben. Das Fenster liegt in `#chatRoot` außerhalb von `#app`, damit getippter Text beim Neuzeichnen bleibt.
 - Jeder Bereich hat eine eigene Adresse: `#/neu`, `#/beitreten`, `#/training`, `#/training/lauf`, `#/ranking`, `#/profil/<name>`, `#/verlauf[/<name>]`, `#/duell/<a>/<b>`, `#/admin`; ein Match hat `?m=CODE` (mit `&p=` Spielercode). Zurück/Vorwärts des Browsers und der Handy-Geste gehen durch die Bereiche, Neuladen bleibt im Bereich, Links sind teilbar. Im laufenden Match fragt Zurück nach; offene Fenster (Einstellungen, Kamera-Zuordnung) schließen zuerst.
 
 ### Live-Kamera
