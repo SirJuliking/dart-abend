@@ -1811,7 +1811,7 @@ async function saveClip(k) {
 
 // ---------- Zurück-Geste / Zurück-Knopf des Browsers ----------
 // Die App ist eine einzige Seite. Damit "Zurück" nicht gleich die Seite verlässt, liegt ein zusätzlicher
-// Verlaufseintrag bereit (erst nach der ersten Berührung, sonst überspringen Browser ihn). Zurück geht dann
+// Verlaufseintrag bereit (erst nach einer Berührung, sonst überspringen Browser ihn). Zurück geht dann
 // einen Schritt in der App zurück, und der Eintrag wird wieder hingelegt. Auf dem Startbildschirm verlässt Zurück die Seite.
 let appUrl = location.href;
 function setUrl(u) { try { appUrl = new URL(u, location.href).href; history.replaceState(history.state, '', u); } catch (e) {} }
@@ -1833,7 +1833,8 @@ function goBack() {
   if (view !== 'home') { nav('home'); return true; }
   return false;
 }
-addEventListener('pointerdown', armBack, { once: true });
+// Browser zählen eine Touch-Eingabe erst beim Loslassen als Berührung; ohne sie würde der Eintrag übersprungen.
+['pointerup', 'click', 'touchend', 'keydown'].forEach(n => addEventListener(n, armBack, true));
 addEventListener('popstate', e => {
   if (e.state && e.state.dart) return;
   if (goBack()) armBack(); else history.back();
