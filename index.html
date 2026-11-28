@@ -1814,7 +1814,7 @@ async function saveClip(k) {
 // Verlaufseintrag bereit (erst nach der ersten Berührung, sonst überspringen Browser ihn). Zurück geht dann
 // einen Schritt in der App zurück, und der Eintrag wird wieder hingelegt. Auf dem Startbildschirm verlässt Zurück die Seite.
 let appUrl = location.href;
-function setUrl(u) { appUrl = new URL(u, location.href).href; try { history.replaceState(history.state, '', u); } catch (e) {} }
+function setUrl(u) { try { appUrl = new URL(u, location.href).href; history.replaceState(history.state, '', u); } catch (e) {} }
 function armBack() { try { if (!(history.state && history.state.dart)) history.pushState({ dart: 1 }, '', appUrl); } catch (e) {} }
 function goBack() {
   if (showSet) { showSet = false; render(); return true; }
