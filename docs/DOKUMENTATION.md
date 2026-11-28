@@ -103,7 +103,7 @@ Datei auf GitHub ändern oder hochladen und „Commit". Vercel veröffentlicht a
 - Match-Code zum Zuschauen und separater Spielercode zum Mitspielen. Mehrere Geräte können eintragen.
 - Zuschauer sehen live mit (nur lesen).
 - Bildschirm bleibt an (Wake Lock), Vibration optional.
-- Zurück-Geste und Zurück-Knopf des Browsers gehen einen Schritt in der App zurück (Fenster schließen, Match verlassen mit Nachfrage, zum Start). Technik: ein zusätzlicher Verlaufseintrag, der nach der ersten Berührung angelegt und nach jedem Zurück neu gesetzt wird; auf dem Startbildschirm verlässt Zurück die Seite.
+- Jeder Bereich hat eine eigene Adresse: `#/neu`, `#/beitreten`, `#/training`, `#/training/lauf`, `#/ranking`, `#/profil/<name>`, `#/verlauf[/<name>]`, `#/duell/<a>/<b>`, `#/admin`; ein Match hat `?m=CODE` (mit `&p=` Spielercode). Zurück/Vorwärts des Browsers und der Handy-Geste gehen durch die Bereiche, Neuladen bleibt im Bereich, Links sind teilbar. Im laufenden Match fragt Zurück nach; offene Fenster (Einstellungen, Kamera-Zuordnung) schließen zuerst.
 
 ### Live-Kamera
 - Kamera starten, Zoom (optisch oder digital), zwei Kameras gleichzeitig.
@@ -173,6 +173,9 @@ Eine Sonderzeile mit globalen Einstellungen: `hp` (ausgeblendete Spieler im Rank
 
 ### Spielstand berechnen (`calc`)
 Geht die Wurfliste durch, bildet Besuche (je 3 Darts), prüft Bust, Check-out-Regel, Leg- und Satzgewinn und liefert Spieler, wer dran ist und den Sieger. Reine Funktion ohne Seiteneffekte; daran hängen fast alle Tests.
+
+### Adressen und Zurück (Router)
+`render()` ruft nach dem Zeichnen `syncUrl()` auf: Aus dem aktuellen Zustand (Match, Training, `view`) wird die passende Adresse gebildet (`wantUrl`). Weicht sie von der Browser-Adresse ab, legt die App einen Verlaufseintrag an (`pushState`); führt die neue Adresse zum vorherigen Eintrag zurück (etwa der „‹ Start"-Knopf), geht sie stattdessen einen Schritt zurück. Beim Zurück/Vorwärts des Browsers (`popstate`) liest `applyUrl()` die Adresse und stellt den Zustand her (Match öffnen, Bereich anzeigen, Ranking-Daten nachladen). Fenster werden beim Zurück nur geschlossen (die App geht danach per `history.go(1)` wieder vor), ebenso bei „Match verlassen?" mit Abbrechen.
 
 ### Zeichnen (`render`)
 Setzt den ganzen Bildschirm aus Textbausteinen neu zusammen, abhängig von `match`, `TS` (Training), `view` und Admin-Zustand. Danach werden Ansagen (`hear`) und Clips (`clipWatch`) angestoßen.

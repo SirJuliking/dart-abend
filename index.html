@@ -897,7 +897,7 @@ async function admRpcTest() {
 let clTab = 'web';
 const CHANGELOG = [
   { d: '28.11.2026', web: [
-    'Zurück-Geste und Zurück-Knopf des Handys gehen jetzt einen Schritt in der App zurück (Fenster schließen, Match verlassen, zum Start) statt die Seite zu verlassen; in einem laufenden Match kommt eine Nachfrage'
+    'Jeder Bereich hat eine eigene Adresse (z. B. …/#/ranking, …/#/neu); Zurück und Vorwärts des Handys und Browsers gehen durch die Bereiche, Neuladen bleibt im Bereich, Links auf Bereiche lassen sich teilen; in einem laufenden Match kommt beim Zurück eine Nachfrage'
   ], adm: [] },
   { d: '27.11.2026', web: [
     'Beitreten zeigt laufende Matches (zuletzt aktiv innerhalb der Aufräum-Zeit, Standard 10 Minuten); antippen = ohne Code zuschauen',
@@ -1211,7 +1211,7 @@ function throwLog(c) {
   return `<details style="margin-top:12px;text-align:left"><summary style="cursor:pointer;color:var(--mute)">Alle Würfe ansehen</summary><div style="overflow-x:auto">${body}</div></details>`;
 }
 
-function render() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'aedit' && adm && AE ? aeView() : view === 'admin' && adm ? admView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : '') + (adm && adel !== null && view === 'admin' && atab === 'p' ? adelPanel() : ''); }
+function render0() { if (match) { hear(); clipWatch(); } $('#app').innerHTML = (match ? matchView() : TS ? trainRun() : view === 'new' ? newView() : view === 'join' ? joinView() : view === 'tsetup' ? tsetup() : view === 'aedit' && adm && AE ? aeView() : view === 'admin' && adm ? admView() : view === 'stats' ? statsView() : view === 'player' ? playerView() : view === 'duel' ? duelView() : view === 'hist' ? histView() : home()) + (showSet ? setPanel() : '') + (camPick && match ? pickPanel() : '') + (adm && adel !== null && view === 'admin' && atab === 'p' ? adelPanel() : ''); }
 function toast(t) {
   const el = document.createElement('div'); el.className = 'toast'; el.textContent = t;
   document.body.appendChild(el); setTimeout(() => el.remove(), 2000);
@@ -1252,7 +1252,6 @@ async function openMatch(id, sec = null) {
   if (sec && data.state.ph && await sha(sec) !== data.state.ph) return toast('Spielercode stimmt nicht');
   leave(true);
   match = { id, st: data.state }; heard = data.state.ev.length; mult = 1; watch = !sec; psec = sec || ''; shareOpen = false; showPc = false;
-  setUrl('?m=' + id + (sec ? '&p=' + sec : ''));
   channel = db.channel('m' + id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id },
     p => { const n = p.new.state; if (pend > 0 || (n.v != null && n.v < (match.st.v || 0))) return; match.st = n; render(); }).subscribe();
   camJoin(id); wake(); clipStart(); render();
@@ -1275,7 +1274,7 @@ async function joinCode() {
 function leave(keep) {
   if (channel) db.removeChannel(channel);
   channel = null; match = null; camLeave(); unwake(); clipStop();
-  if (!keep) { view = 'home'; loadKnown(); setUrl(location.pathname); render(); }
+  if (!keep) { view = 'home'; loadKnown(); render(); }
 }
 // Sicheres Eintragen: jeder Wurf wird einzeln und atomar in der Datenbank angehängt (Funktion ev_push/ev_pop).
 // Fehlt die Funktion in Supabase, wird wie früher der ganze Spielstand gespeichert.
@@ -1809,42 +1808,77 @@ async function saveClip(k) {
   toast('Clip wird gespeichert');
 }
 
-// ---------- Zurück-Geste / Zurück-Knopf des Browsers ----------
-// Die App ist eine einzige Seite. Damit "Zurück" nicht gleich die Seite verlässt, liegt ein zusätzlicher
-// Verlaufseintrag bereit (erst nach einer Berührung, sonst überspringen Browser ihn). Zurück geht dann
-// einen Schritt in der App zurück, und der Eintrag wird wieder hingelegt. Auf dem Startbildschirm verlässt Zurück die Seite.
-let appUrl = location.href;
-function setUrl(u) { try { appUrl = new URL(u, location.href).href; history.replaceState(history.state, '', u); } catch (e) {} }
-function armBack() { try { if (!(history.state && history.state.dart)) history.pushState({ dart: 1 }, '', appUrl); } catch (e) {} }
-function goBack() {
-  if (showSet) { showSet = false; render(); return true; }
-  if (camPick) { camPick = false; render(); return true; }
-  if (adel !== null) { adel = null; render(); return true; }
-  if (match) {
-    const live = !watch && calc(match.st.cfg, match.st.ev).winner === null;
-    if (live && !confirm('Match verlassen? Mit deinem Spielercode kannst du wieder beitreten.')) return true;
-    leave(); return true;
-  }
-  if (TS) { trainLeave(); return true; }
-  if (view === 'aedit') { aeCancel(); return true; }
-  if (view === 'player') { backTo(pfrom); return true; }
-  if (view === 'hist') { backTo(histF ? 'player' : 'stats'); return true; }
-  if (view === 'duel') { backTo(pk ? 'player' : 'stats'); return true; }
-  if (view !== 'home') { nav('home'); return true; }
-  return false;
+// ---------- Adressen und Zurück (Router) ----------
+// Jeder Bereich hat eine eigene Adresse (#/ranking, #/neu, ...), ein Match hat ?m=CODE. Wechselt die App den Bereich,
+// legt sie einen Verlaufseintrag an. Zurück/Vorwärts des Browsers lesen die Adresse und stellen den Bereich wieder her.
+function render() { render0(); syncUrl(); }
+let HS = [], hi = 0, popping = false, noSync = true, skipPop = 0;
+const encU = x => encodeURIComponent(x || '');
+const ROUTES = { '': 'home', neu: 'new', beitreten: 'join', training: 'tsetup', ranking: 'stats', profil: 'player', verlauf: 'hist', duell: 'duel', admin: 'admin' };
+function wantUrl() {
+  const base = location.pathname;
+  if (match) return base + '?m=' + match.id + (psec ? '&p=' + encU(psec) : '');
+  if (TS) return base + '#/training/lauf';
+  const r = { home: '', new: 'neu', join: 'beitreten', tsetup: 'training', stats: 'ranking', player: 'profil/' + encU(pk), hist: 'verlauf' + (histF ? '/' + encU(histF) : ''), duel: 'duell/' + encU(duelA) + '/' + encU(duelB), admin: 'admin', aedit: 'admin/match' }[view];
+  return base + (r ? '#/' + r : '');
 }
-// Browser zählen eine Touch-Eingabe erst beim Loslassen als Berührung; ohne sie würde der Eintrag übersprungen.
-['pointerup', 'click', 'touchend', 'keydown'].forEach(n => addEventListener(n, armBack, true));
-addEventListener('popstate', e => {
-  if (e.state && e.state.dart) return;
-  if (goBack()) armBack(); else history.back();
+function syncUrl() {
+  if (noSync || skipPop > 0) return;
+  try {
+    const u = wantUrl(), cur = location.pathname + location.search + location.hash;
+    if (u === cur) return;
+    if (popping) { history.replaceState({ i: hi }, '', u); HS[hi] = u; }
+    else if (hi > 0 && HS[hi - 1] === u) { skipPop++; history.back(); }
+    else { HS = HS.slice(0, hi + 1); history.pushState({ i: hi + 1 }, '', u); hi++; HS[hi] = u; }
+  } catch (e) {}
+}
+function stay() { skipPop++; history.go(1); }
+async function applyUrl() {
+  const q = new URLSearchParams(location.search), m = (q.get('m') || '').toUpperCase();
+  const h = location.hash.replace(/^#\/?/, '').split('/').map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } });
+  if (showSet || camPick || adel !== null) { showSet = false; camPick = false; adel = null; skipPop++; render0(); history.go(1); return; } // Fenster nur schließen
+  if (m) {
+    if (!match || match.id !== m) await openMatch(m, q.get('p')); else render();
+    return;
+  }
+  if (match) {
+    if (!watch && calc(match.st.cfg, match.st.ev).winner === null && !confirm('Match verlassen? Mit deinem Spielercode kannst du wieder beitreten.')) return stay();
+    leave(true);
+  }
+  const r = h[0] || '';
+  let v = ROUTES[r] || 'home';
+  if (r === 'training' && h[1] === 'lauf') { if (TS) { render(); return; } v = 'tsetup'; }
+  if (TS) { TS = null; camLeave(); unwake(); }
+  if (r === 'admin' && h[1] === 'match' && AE) v = 'aedit';
+  if (v === 'admin' && !adm) v = 'home';
+  if (v === 'player' || v === 'hist' || v === 'duel' || v === 'stats') {
+    if (!SC) await Promise.all([loadStatsData(), loadTrain()]);
+    if (!SC) v = 'home';
+    else if (v === 'player') { pk = (h[1] || '').toLowerCase(); if (!pk) v = 'stats'; else { if (pfrom !== 'tsetup') pfrom = 'stats'; } }
+    else if (v === 'hist') histF = (h[1] || '').toLowerCase();
+    else if (v === 'duel') { duelA = h[1] || ''; duelB = h[2] || ''; if (!duelA || !duelB) v = 'stats'; }
+  }
+  if (v === 'join') { LIVE = null; loadLive(); }
+  view = v; render(); scrollTo(0, 0);
+}
+addEventListener('popstate', async e => {
+  hi = e.state && e.state.i != null ? e.state.i : hi;
+  HS[hi] = location.pathname + location.search + location.hash;
+  if (skipPop > 0) { skipPop--; return; }
+  popping = true;
+  try { await applyUrl(); } catch (er) { render(); } finally { popping = false; }
 });
+function routerInit() {
+  hi = history.state && history.state.i != null ? history.state.i : 0;
+  HS[hi] = location.pathname + location.search + location.hash;
+  try { history.replaceState({ i: hi }, '', HS[hi]); } catch (e) {}
+  popping = true;
+  applyUrl().catch(() => {}).finally(() => { noSync = false; render(); popping = false; });
+}
 
 // ---------- Start ----------
-render();
 loadKnown().then(autoClean); setInterval(autoClean, 120000);
-const q0 = new URLSearchParams(location.search), m0 = q0.get('m');
-if (m0) openMatch(m0.toUpperCase(), q0.get('p'));
+routerInit();
 </script>
 </body>
 </html>
